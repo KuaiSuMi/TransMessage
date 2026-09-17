@@ -1,0 +1,41 @@
+<Window x:Class="TransMessage.App.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="TransMessage" Width="1080" Height="800" MinWidth="780" MinHeight="580"
+        WindowStartupLocation="CenterScreen" Background="{DynamicResource Page}"
+        FontFamily="Segoe UI, Microsoft YaHei UI" FontSize="14" Foreground="{DynamicResource Label}">
+  <Grid x:Name="RootGrid" Margin="14" Background="{DynamicResource Page}">
+    <Grid.ColumnDefinitions><ColumnDefinition Width="210"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+    <Border x:Name="SidebarBorder" CornerRadius="24" Background="{DynamicResource Sidebar}" Padding="12,24,12,16">
+      <DockPanel>
+        <StackPanel DockPanel.Dock="Top" Margin="12,0,8,24">
+          <TextBlock Text="TransMessage" FontSize="20" FontWeight="Bold"/>
+          <TextBlock Text="完成之后，随时知晓" Foreground="{DynamicResource Secondary}" FontSize="12" Margin="0,8,0,0"/>
+        </StackPanel>
+        <StackPanel DockPanel.Dock="Bottom" Margin="12,24,8,0">
+          <TextBlock x:Name="TrayStatus" Text="●  后台运行中" FontSize="12"/>
+          <TextBlock x:Name="VersionLabel" Foreground="{DynamicResource Secondary}" FontSize="12" Margin="0,8,0,0"/>
+        </StackPanel>
+        <ListBox x:Name="Navigation" BorderThickness="0" Background="Transparent" SelectionChanged="Navigate" ScrollViewer.HorizontalScrollBarVisibility="Disabled" AutomationProperties.Name="主导航">
+          <ListBoxItem Tag="home"><TextBlock Text="⌂     总览"/></ListBoxItem>
+          <ListBoxItem Tag="qq"><TextBlock Text="◎     QQ 机器人"/></ListBoxItem>
+          <ListBoxItem Tag="codex"><TextBlock Text="✦     Codex"/></ListBoxItem>
+          <ListBoxItem Tag="downloads"><TextBlock Text="↓     下载与文件"/></ListBoxItem>
+          <ListBoxItem Tag="api"><TextBlock Text="⇄     本地 API"/></ListBoxItem>
+          <ListBoxItem Tag="integrations"><TextBlock Text="⌘     快捷集成"/></ListBoxItem>
+          <ListBoxItem Tag="settings"><TextBlock Text="⚙     设置"/></ListBoxItem>
+          <ListBoxItem Tag="doctor"><TextBlock Text="⊙     诊断与日志"/></ListBoxItem>
+        </ListBox>
+      </DockPanel>
+    </Border>
+    <Grid Grid.Column="1" Margin="34,14,18,0">
+      <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+      <ScrollViewer x:Name="PageScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel x:Name="PageContent" Margin="0,0,12,20"/>
+      </ScrollViewer>
+      <Border Grid.Row="1" Padding="0,10,0,4" MinHeight="40">
+        <TextBlock x:Name="FeedbackText" Text="凭证在本机加密保存。通知内容发送前自动脱敏。" Foreground="{DynamicResource Secondary}" FontSize="12" AutomationProperties.LiveSetting="Polite"/>
+      </Border>
+    </Grid>
+  </Grid>
+</Window>

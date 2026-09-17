@@ -1,0 +1,101 @@
+using System.Text.Json;
+using TransMessage.Core;
+using TransMessage.Core.Codex;
+using TransMessage.Core.Configuration;
+using TransMessage.Core.Notifications;
+
+namespace TransMessage.Tests;
+
+public sealed class CodexTests
+{
+    public const string ThreadId = "12345678-1234-1234-1234-123456789012";
+    private static readonly SessionIdentity User = new(ThreadId, @"D:\项目\测试", "codex-tui", true);
+    public static string Payload(string input = "实现功能", string turn = "turn-1") => JsonSerializer.Serialize(new Dictionary<string, object>
+    {
+        ["type"] = "agent-turn-complete",
+        ["thread-id"] = ThreadId,
+        ["turn-id"] = turn,
+        ["input-messages"] = new[] { input },
+        ["last-assistant-message"] = "已完成",
+        ["unknown-future-field"] = "ignored"
+    });
+    public static string Meta(string source = "cli") => JsonSerializer.Serialize(new { type = "session_meta", payload = new { id = ThreadId, cwd = @"D:\项目\测试", originator = "codex-tui", source } });
+    public static string Event(string type, object payload) => JsonSerializer.Serialize(new { type, payload });
+    [Fact]
+    public void ValidAndMissingOptionalFields()
+    {
+        var n = CodexEvents.ParseNotify(Payload(), new(), User); Assert.NotNull(n); Assert.Equal($"codex:{ThreadId}:turn-1", n.Id); Assert.Contains("实现功能", n.Message);
+        Assert.Null(CodexEvents.ParseNotify("not json", new(), User)); Assert.Null(CodexEvents.ParseNotify("{}", new(), User));
+        Assert.Null(CodexEvents.ParseNotify(Payload(), new(), null));
+    }
+    [Theory]
+    [InlineData("Generate a concise, single-line task title for the following request")]
+    [InlineData("You are a task title generator. Write one title")]
+    [InlineData("You are creating a CONTEXT CHECKPOINT")]
+    public void InternalRequestsAreIgnored(string text) => Assert.Null(CodexEvents.ParseNotify(Payload(text), new(), User));
+    [Fact]
+    public void SubagentAndInternalMetadataAreRejected()
+    {
+        using var json = JsonDocument.Parse("""{"id":"12345678-1234-1234-1234-123456789012","source":{"subagent":"review"},"originator":"codex-tui"}""");
+        Assert.False(CodexEvents.ReadIdentity(json.RootElement)!.IsUser);
+        Assert.Null(CodexEvents.ParseNotify(Payload(), new(), User with { IsUser = false }));
+    }
+    [Theory]
+    [InlineData("task_complete", "success")]
+    [InlineData("turn_aborted", "warning")]
+    public void SessionRequiresMatchingStartedUserTurn(string completion, string level)
+    {
+        var reader = new CodexTurnReader(); var cfg = new AppConfig(); reader.ReadLine(Meta(), cfg);
+        reader.ReadLine(Event("event_msg", new { type = "task_started", turn_id = "a" }), cfg);
+        reader.ReadLine(Event("event_msg", new { type = "user_message", message = "测试程序" }), cfg);
+        Assert.Null(reader.ReadLine(Event("event_msg", new { type = "agent_message", message = "中间结果" }), cfg));
+        var n = reader.ReadLine(Event("event_msg", new { type = completion, turn_id = "a", last_agent_message = "完成", duration_ms = 1200 }), cfg);
+        Assert.NotNull(n); Assert.Equal(level, n.Level); Assert.Contains("耗时", n.Message);
+        Assert.Null(reader.ReadLine(Event("event_msg", new { type = completion, turn_id = "a" }), cfg));
+    }
+    [Fact]
+    public void FailureAndMalformedEventsAreHandled()
+    {
+        var reader = new CodexTurnReader(); var cfg = new AppConfig(); reader.ReadLine(Meta(), cfg);
+        reader.ReadLine(Event("event_msg", new { type = "task_started", turn_id = "x" }), cfg);
+        reader.ReadLine(Event("event_msg", new { type = "user_message", message = "test" }), cfg);
+        var n = reader.ReadLine(Event("event_msg", new { type = "task_complete", turn_id = "x", error = new { message = "failed" } }), cfg);
+        Assert.Equal("error", n!.Level);
+        Assert.Null(reader.ReadLine("{broken", cfg));
+    }
+    [Theory]
+    [InlineData("# 中文 comment\nmodel = 'example'\n[projects.'D:\\项目']\ntrust_level = 'trusted'\n")]
+    [InlineData("# keep\nnotify = [ 'old.exe', 'arg' ] # existing hook\nmodel = 'example'\n[table]\nvalue = 42\n")]
+    [InlineData("\"notify\" = [\n 'old.exe',\n 'arg',\n]\nmodel='other'\n")]
+    public void IntegrationPreservesConfigAndUninstalls(string original)
+    {
+        using var data = new TestData(); var home = Path.Combine(data.Paths.Root, "codex"); Directory.CreateDirectory(home);
+        var path = Path.Combine(home, "config.toml"); File.WriteAllText(path, original);
+        var integration = new CodexIntegration(data.Paths, home); integration.Install(@"C:\测试 软件\TransMessage.exe");
+        var installed = File.ReadAllText(path); Assert.True(integration.IsInstalled()); Assert.Contains("model", installed);
+        integration.Install(@"C:\测试 软件\TransMessage.exe"); Assert.Equal(installed, File.ReadAllText(path)); Assert.Single(Directory.GetFiles(home, "*.transmessage-backup-*"));
+        Assert.True(integration.Uninstall()); Assert.Equal(original, File.ReadAllText(path));
+    }
+    [Fact]
+    public void InvalidTomlAndExternalEditAreNeverOverwritten()
+    {
+        using var data = new TestData(); var home = Path.Combine(data.Paths.Root, "codex"); Directory.CreateDirectory(home);
+        var path = Path.Combine(home, "config.toml"); File.WriteAllText(path, "[broken"); var integration = new CodexIntegration(data.Paths, home);
+        Assert.Throws<AppException>(() => integration.Install(@"C:\TransMessage.exe")); Assert.Equal("[broken", File.ReadAllText(path));
+        File.WriteAllText(path, "model = 'a'\n"); integration.Install(@"C:\TransMessage.exe");
+        File.WriteAllText(path, "notify=['custom.exe']\n"); Assert.Throws<AppException>(() => integration.Uninstall()); Assert.Equal("notify=['custom.exe']\n", File.ReadAllText(path));
+    }
+    [Fact]
+    public async Task SessionWatcherSkipsHistoryAndDeduplicatesHook()
+    {
+        using var data = new TestData(); var home = Path.Combine(data.Paths.Root, "codex"); var sessions = Path.Combine(home, "sessions"); Directory.CreateDirectory(sessions);
+        var file = Path.Combine(sessions, $"rollout-{ThreadId}.jsonl"); await File.WriteAllTextAsync(file, Meta() + "\n");
+        var channel = new RecordingChannel(); var dispatcher = new Dispatcher(data.Config, new(data.Paths), new(), channel, TestData.Logger);
+        using var watcher = new CodexSessionWatcher(data.Config, dispatcher.SendAsync, TestData.Logger, home); using var stop = new CancellationTokenSource(); var running = watcher.RunAsync(stop.Token);
+        await TestData.UntilAsync(() => watcher.Status.StartsWith("已监听", StringComparison.Ordinal));
+        var lines = new[] { Event("event_msg", new { type = "task_started", turn_id = "turn-1" }), Event("event_msg", new { type = "user_message", message = "hello" }), Event("event_msg", new { type = "task_complete", turn_id = "turn-1", last_agent_message = "done" }) };
+        await File.AppendAllTextAsync(file, string.Join("\n", lines) + "\n"); await TestData.UntilAsync(() => channel.Sent.Count == 1);
+        var result = await dispatcher.SendAsync(CodexEvents.ParseNotify(Payload("hello"), data.Config.Load(), User)!); Assert.Equal("duplicate", result.Status);
+        stop.Cancel(); await running; Assert.Single(channel.Sent);
+    }
+}

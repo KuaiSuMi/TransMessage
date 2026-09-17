@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <DisableWinExeOutputInference>true</DisableWinExeOutputInference>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <AssemblyName>TransMessage</AssemblyName>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets/app.ico</ApplicationIcon>
+    <StartupObject>TransMessage.App.Program</StartupObject>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../TransMessage.Core/TransMessage.Core.csproj" />
+    <PackageReference Include="System.CommandLine" Version="2.0.12" />
+    <Using Remove="System.Windows.Forms" />
+    <Using Remove="System.Drawing" />
+    <AssemblyMetadata Include="BuildTime" Value="$(BuildTime)" />
+    <AssemblyMetadata Include="Commit" Value="$(SourceRevisionId)" />
+  </ItemGroup>
+</Project>

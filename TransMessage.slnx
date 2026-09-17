@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/TransMessage.App/TransMessage.App.csproj" />
+    <Project Path="src/TransMessage.Core/TransMessage.Core.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/TransMessage.GuiTests/TransMessage.GuiTests.csproj" />
+    <Project Path="tests/TransMessage.Tests/TransMessage.Tests.csproj" />
+  </Folder>
+</Solution>
