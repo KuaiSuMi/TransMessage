@@ -9,6 +9,8 @@
     <RepositoryUrl>https://github.com/KuaiSuMi/TransMessage</RepositoryUrl>
     <Deterministic>true</Deterministic>
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <EnableSingleFileAnalyzer>true</EnableSingleFileAnalyzer>
+    <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
     <NuGetAudit>true</NuGetAudit>
     <NuGetAuditMode>all</NuGetAuditMode>
   </PropertyGroup>

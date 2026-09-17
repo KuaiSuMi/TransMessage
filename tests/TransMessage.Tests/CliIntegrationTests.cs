@@ -54,4 +54,30 @@ public sealed class CliIntegrationTests
         var success = await InvokeAsync(data, ["run", "--", "cmd", "/c", "exit 0"]); Assert.Equal(0, success.Exit); Assert.Contains("通知警告", success.Error);
         var failure = await InvokeAsync(data, ["run", "--", "cmd", "/c", "exit 17"]); Assert.Equal(17, failure.Exit); Assert.Contains("通知警告", failure.Error);
     }
+
+    [Fact]
+    public async Task PublishedBackgroundIsSingleInstanceAndStopsCleanly()
+    {
+        using var data = new TestData();
+        data.Config.Update(c => { c.Codex.Enabled = false; c.Downloads.Enabled = false; c.Update.Check = false; c.Server.Port = TestData.Port(); });
+        var start = new ProcessStartInfo(Exe) { UseShellExecute = false, CreateNoWindow = true };
+        foreach (var arg in new[] { "--data-dir", data.Paths.Root, "--background" }) start.ArgumentList.Add(arg);
+        using var process = Process.Start(start)!;
+        var pipe = new InstancePipe(data.Paths);
+        try
+        {
+            PipeReply? status = null;
+            for (var i = 0; i < 40; i++)
+            {
+                status = await pipe.TrySendAsync(new("status"));
+                if (status?.Message.Contains("API：仅本机", StringComparison.Ordinal) == true) break;
+                Assert.False(process.HasExited); await Task.Delay(150);
+            }
+            Assert.Contains("API：仅本机", status?.Message ?? "");
+            var second = await InvokeAsync(data, ["--background"]); Assert.Equal(0, second.Exit); Assert.False(process.HasExited);
+            var stopped = await pipe.TrySendAsync(new("stop")); Assert.True(stopped?.Ok);
+            await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(15)); Assert.Equal(0, process.ExitCode);
+        }
+        finally { if (!process.HasExited) { process.Kill(true); await process.WaitForExitAsync(); } }
+    }
 }

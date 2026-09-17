@@ -1,7 +1,39 @@
 # 0.1.0 验收记录
 
-构建和测试记录将在最终打包验收后写入本文件。这里没有声称完成腾讯实机收发验证。
+验收日期：2026-09-18（Asia/Shanghai）。版本：0.1.0。开发与运行主机：Windows 10 专业版 22H2，10.0.19045，x64。工具链：.NET SDK 10.0.401；发布包包含 .NET 10.0.12 运行时。
 
-已知外部边界：QQ AppID/AppSecret 尚未提供；未执行真实 QQ 私聊/群聊主动发送；未在另一台 Windows 10 机器验证；本机 Computer Use 的 Windows 截图/输入驱动返回 `SetIsBorderRequired failed: 不支持此接口 (0x80004002)` 和 `coordinate input geometry is unavailable`，真实窗口可访问性树可读取，但完整鼠标交互未获验证。
+## 已验证
 
-GUI 使用实际 WPF 组件完成渲染检查，不将渲染测试混同为完整实机交互通过。
+| 项目 | 结果与证据 |
+|---|---|
+| 依赖与编译 | 锁定依赖还原成功，格式检查通过，编译零警告、零错误；NuGet 审计未发现已知漏洞 |
+| 自动测试 | 55 项全量测试通过；其后新增后台进程测试 1 项通过，共 56 个不同用例。API 和后台退出修正分别通过 10 项、2 项定向复测 |
+| QQ 协议 | 模拟 HTTP/WebSocket 覆盖认证、私聊、群聊、绑定、Token 刷新、401/429/500、超时与重复防护；无需真实凭证 |
+| Codex | 完成事件、同一 turn 去重、内部标题/子代理过滤、格式错误、取消/失败、只读会话监听、TOML 配置保留与备份恢复通过 |
+| 命令与文件 | 命令成功/失败、退出码、输出、取消、中文和空格路径、持续写入、临时下载文件重命名及重复事件通过 |
+| HTTP / 更新 | 本机与 LAN 鉴权、无效请求与大小限制通过；模拟 Release 版本比较、下载中断与校验和通过 |
+| 发布程序 | 实际自包含 exe 的 version、doctor、send、run、Codex 通知/去重/过滤通过；QQ 发送失败不改变子命令退出码；后台单实例、API 启动和退出通过 |
+| 无外部运行时 | 设置不存在的 DOTNET_ROOT、禁止多级运行时查找，并将 PATH 限制为 Windows 系统目录后，发布 exe 仍能正常报告版本 |
+| GUI | 实际 WPF 组件渲染 18 张图：8 页分别深浅色，加 2 张 200% 字体缩放；已检查代表性页面并修正主按钮文字对比问题 |
+| 脚本与示例 | PowerShell 脚本语法、Python 编译、JavaScript 语法检查通过 |
+
+自动测试原始记录位于开发工作区 `artifacts/test-results/verified.trx`、`network-final.trx`、`ipc-final.trx`、`background.trx`、`published.trx`；GUI 图像位于 `artifacts/gui/`。这些是开发验收证据，不打入用户数据目录。
+
+## 发布产物
+
+- `dist/TransMessage-win-x64.zip`：Windows x64 自包含单文件程序、中文文档、示例、安装/卸载脚本及第三方许可证；解压后运行 `TransMessage.exe`。
+- `dist/SHA256SUMS`：压缩包 SHA-256。校验值以此文件为准，避免在包内重复记录自身校验值。
+- `dist/build-info.json`：准确版本、源码提交、UTC 构建时间、大小及 SHA-256；程序 `version` 命令也显示构建信息。
+- GitHub Actions 构建/检查/标签发布流程已配置。本次只生成本地发布包，未上传 GitHub Release，也未声称远程 CI 已通过。
+
+## 尚未验证的外部环节
+
+1. **真实 QQ 收发**：未提供 AppID/AppSecret，未执行手机私聊、群聊或腾讯生产环境主动发送。需要用户按 [QQ_REAL_DEVICE_TEST.md](QQ_REAL_DEVICE_TEST.md) 完成；配额、主动消息权限和审核结果以腾讯控制台为准。
+2. **Windows 11 与另一台设备**：本次在 Windows 10 主机验证，未在 Windows 11 或另一台干净机器执行完整验收。
+3. **完整实机 GUI 操作**：真实窗口启动成功，可访问性树可读；本机 Computer Use 驱动返回 `SetIsBorderRequired failed: 不支持此接口 (0x80004002)` 和 `coordinate input geometry is unavailable`，因此未完成真实鼠标/键盘流程、高对比系统切换和读屏验收。WPF 渲染检查不等同于这些交互通过。
+4. **真实发布升级**：下载与校验用模拟服务验证；替换、重启检查和失败回滚已实现，尚未通过公开 GitHub Release 执行一次真实跨版本升级。
+5. **代码签名**：发布包未做 Authenticode 签名，Windows 可能显示未识别发布者。
+
+## 产品行为边界
+
+Codex 兼容结论基于研究记录中的官方源码及本机会话元数据，不代表所有未来客户端版本。未知事件格式安全跳过；没有可靠证据时不虚构完成通知。去重保留七天且在发送前占用一次尝试；网络结果不明确时不会自动重发，不能保证异常情况下送达。命令代理保留标准流与退出码，但没有实现完整 ConPTY 终端仿真。下载完成使用元数据稳定与独占打开检查，无法证明任意生产程序以后绝不会继续写入。

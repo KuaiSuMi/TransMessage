@@ -13,6 +13,7 @@ TransMessage does not assign a license to the main repository. The following not
 | Serilog.Sinks.File | 7.0.0 | Apache-2.0 | [serilog/serilog-sinks-file](https://github.com/serilog/serilog-sinks-file), `licenses/serilog-sinks-file-Apache-2.0.txt` |
 | xUnit / adapter | 2.9.3 / 4.0.0 | Apache-2.0 | [xunit/xunit](https://github.com/xunit/xunit), development/test only |
 | Microsoft.NET.Test.Sdk / TestPlatform / CodeCoverage | 18.10.1 | MIT | [microsoft/vstest](https://github.com/microsoft/vstest), development/test only |
+| Microsoft.NET.ILLink.Tasks | 10.0.12 | MIT | [dotnet/runtime](https://github.com/dotnet/runtime), single-file analyzer/build tool only |
 
 Microsoft fonts and icon glyphs used by the UI are supplied by Windows, not redistributed font files. The simple application icon is drawn by this repository's own icon script.
 
