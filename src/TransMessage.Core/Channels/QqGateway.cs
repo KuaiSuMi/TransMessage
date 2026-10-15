@@ -4,7 +4,7 @@ using Serilog;
 
 namespace TransMessage.Core.Channels;
 
-public sealed class QqGateway(QqClient qq, QqBinding binding, ILogger logger)
+public sealed class QqGateway(QqClient qq, QqBinding binding, ILogger logger, Func<string, JsonElement, bool>? onMessage = null)
 {
     public string Status { get; private set; } = "未连接";
     public event Action? TargetBound;
@@ -88,6 +88,7 @@ public sealed class QqGateway(QqClient qq, QqBinding binding, ILogger logger)
                                     catch (Exception e) { logger.Warning("Binding reply failed: {Kind}", e.GetType().Name); }
                                 }
                             }
+                            else onMessage?.Invoke(type, data);
                             break;
                     }
                 }

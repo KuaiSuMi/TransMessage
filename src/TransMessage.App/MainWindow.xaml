@@ -20,6 +20,8 @@
           <ListBoxItem Tag="home"><TextBlock Text="⌂     总览"/></ListBoxItem>
           <ListBoxItem Tag="qq"><TextBlock Text="◎     QQ 机器人"/></ListBoxItem>
           <ListBoxItem Tag="codex"><TextBlock Text="✦     Codex"/></ListBoxItem>
+          <ListBoxItem Tag="remote"><TextBlock Text="QQ 控制"/></ListBoxItem>
+          <ListBoxItem Tag="history"><TextBlock Text="通知历史"/></ListBoxItem>
           <ListBoxItem Tag="downloads"><TextBlock Text="↓     下载与文件"/></ListBoxItem>
           <ListBoxItem Tag="api"><TextBlock Text="⇄     本地 API"/></ListBoxItem>
           <ListBoxItem Tag="integrations"><TextBlock Text="⌘     快捷集成"/></ListBoxItem>

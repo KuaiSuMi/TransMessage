@@ -14,6 +14,13 @@
 | CODEX_PARSE | 修复原 config.toml 语法后重新集成，原文件未改 |
 | CODEX_MODIFIED | notify 已被其他工具修改；核对备份后自行合并，程序不会覆盖 |
 | Codex 没通知 | 重启 Codex、保持本地后台、运行 doctor；未知或内部会话被安全跳过 |
+| Desktop 无实时控制通道 | 本机当前版本只支持共享队列；远程问答改用 TransMessage 托管会话 |
+| 入队成功但没执行 | 确认 Desktop 正在运行并查看原会话；入队确认不等于执行确认，不盲目重复提交 |
+| CONTROL_THREAD / CONTROL_OWNER | 在电脑授权正确会话并选择启用的私聊主人；群聊不能控制 |
+| CONTROL_EXPIRED / CONTROL_ANSWER_UNCERTAIN | 在电脑检查原问题和连接；旧码不重放，不重复批准 |
+| CODEX_TIMEOUT / CONTROL_OFFLINE | 查询原会话是否已执行，再在电脑重新连接；不会自动恢复不确定指令 |
+| CODEX_RPC / no rollout found | 新建后从未启动的会话没有持久历史；撤销该空会话并重新创建 |
+| 历史无法解密或读取 | 保留并备份 history.dpapi；确认 Windows 账户，程序不覆盖损坏文件 |
 | API 无法启动 | 端口被占用时换端口并保存；检查诊断中的后台组件错误 |
 | LAN 无法访问 | 确认 GUI 开关、同网段、Token 和 Windows 防火墙手动规则 |
 | DPAPI | 确认同一 Windows 账户；移动到另一电脑需重新输入凭证 |

@@ -22,6 +22,7 @@ public sealed class AppRuntime : IAsyncDisposable
     public Dispatcher Dispatcher { get; }
     public Sanitizer Sanitizer { get; }
     public ReleaseUpdater Updater { get; }
+    public RemoteCodex Remote { get; }
     public QqGateway? Gateway { get; private set; }
     public NotificationApi? Api { get; private set; }
     public StableFileWatcher? Files { get; private set; }
@@ -44,6 +45,18 @@ public sealed class AppRuntime : IAsyncDisposable
         Sanitizer = new(() => new[] { Secrets.Get("qq") ?? "", Secrets.Get("api") ?? "" });
         Dispatcher = new(Config, new(paths), Sanitizer, channel ?? new QqOfficialChannel(Config, Qq), Log);
         Updater = new(_http, paths);
+        Remote = new(Config, Sanitizer, SendPrivateAsync);
+    }
+    private async Task<DeliveryResult> SendPrivateAsync(string owner, Notification notification, string? replyId, CancellationToken ct)
+    {
+        var c = Config.Load();
+        if (!c.RemoteCodex.Enabled || c.RemoteCodex.OwnerId != owner || !c.Qq.Targets.Any(t => t.Id == owner && t.Kind == "c2c" && t.Enabled))
+            return new(false, notification.Id, "failed", "私聊控制授权已撤销。");
+        var clean = Sanitizer.Clean(notification); var key = Dispatcher.History.Begin(clean, "控制者私聊");
+        DeliveryResult result;
+        try { await Qq.SendTextAsync(new() { Id = owner, Kind = "c2c" }, Security.Sanitizer.QqText(clean), ct, replyId); result = new(true, clean.Id, "sent"); }
+        catch (Exception e) { result = new(false, clean.Id, e is AppException error && (error.Code.StartsWith("QQ_4", StringComparison.Ordinal) || error.Code == "QQ_NOT_CONFIGURED") ? "failed" : "uncertain", AppException.Describe(e)); }
+        Dispatcher.History.Complete(key, result.Status, result.Error); return result;
     }
     public async Task<DeliveryResult> SendAsync(Notification notification, CancellationToken ct = default)
     {
@@ -60,8 +73,10 @@ public sealed class AppRuntime : IAsyncDisposable
         lock (Errors) Errors.Clear();
         if (!string.IsNullOrWhiteSpace(c.Qq.AppId) && Secrets.Get("qq") is not null)
         {
-            Gateway = new(Qq, Binding, Log); Track("QQ", () => Gateway.RunAsync(token));
+            Gateway = new(Qq, Binding, Log, Remote.Enqueue); Track("QQ", () => Gateway.RunAsync(token));
         }
+        try { await Remote.ApplySettingsAsync(ct); }
+        catch (Exception e) { lock (Errors) Errors["QQ 控制"] = AppException.Describe(e); }
         if (c.Server.Enabled) { Api = new(c.Server, Secrets, Dispatcher.SendAsync); Track("API", () => Api.RunAsync(token)); }
         if (c.Downloads.Enabled)
         {
@@ -104,6 +119,6 @@ public sealed class AppRuntime : IAsyncDisposable
     }
     public async ValueTask DisposeAsync()
     {
-        await StopServicesAsync(); _http.Dispose(); (Log as IDisposable)?.Dispose();
+        await Remote.DisposeAsync(); await StopServicesAsync(); _http.Dispose(); (Log as IDisposable)?.Dispose();
     }
 }

@@ -14,6 +14,7 @@
 | setup | 终端交互式 QQ 配置、绑定、Codex、启动和测试 |
 | doctor [--online] | 本地诊断；online 另测 QQ 认证和更新 |
 | codex install / uninstall / status | 安装、移除和检测集成 |
+| codex probe-desktop | 检测实时控制 socket 和会话发现，不提交提示 |
 | startup enable / disable | 当前用户登录启动 |
 | update [--install] | 检查版本；install 下载、校验并安装 |
 | version | 版本、commit、构建时间、运行时、OS、架构 |

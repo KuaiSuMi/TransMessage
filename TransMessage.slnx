@@ -4,6 +4,7 @@
     <Project Path="src/TransMessage.Core/TransMessage.Core.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/TransMessage.CodexProbe/TransMessage.CodexProbe.csproj" />
     <Project Path="tests/TransMessage.GuiTests/TransMessage.GuiTests.csproj" />
     <Project Path="tests/TransMessage.Tests/TransMessage.Tests.csproj" />
   </Folder>

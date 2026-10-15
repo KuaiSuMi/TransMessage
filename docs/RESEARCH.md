@@ -1,5 +1,17 @@
 # 研究与取舍
 
+## 0.2.0 追加核查（2026-10-15）
+
+- 本机 Codex CLI 为 0.153.4，Desktop 使用的原生程序为 0.162.0-alpha.17.2。以实际 exe 生成的 experimental JSON Schema 核对 `thread/queue/add/list/delete`、`item/tool/requestUserInput`、`serverRequest/resolved` 等字段。
+- [官方 App Server 文档](https://learn.chatgpt.com/docs/app-server)定义 JSONL stdio 请求、通知与服务器请求；[CLI 参考](https://learn.chatgpt.com/docs/cli/reference)提供进程入口。实验接口可能随 Codex 更新变化，不做静默旧协议降级。
+- 官方源码 `app-server/src/lib.rs` 的 stdio transport 不是可跨客户端接管的广播总线。本机 `app-server proxy` 因控制 socket 不可达而失败（Windows 10050）。未重启或注入用户现有 Desktop。
+- 在现有 Desktop 会话上用官方队列 API 添加无操作提示，读取确认后立即删除并核验不存在；从未对该会话调用 resume / turn/start。此结果证明共享队列可访问，不证明 Desktop 已消费或执行。
+- 官方 `rollout/src/policy.rs` 将 RequestUserInput 和审批列为 transient/non-durable；不能从持久历史可靠恢复当前待输入。0.2.0 不通过 JSONL 猜测 Desktop 的实时问题。
+- 原生联调使用官方测试中的 request_user_input SSE 协议形态，真实启动本机 Codex，隔离 CODEX_HOME 和本地模型服务。生产 RemoteCodex 完成「创建 → 继续 → 问题 → 私聊答案 → serverRequest/resolved → turn/completed」。证据位于 `artifacts/native-codex-v020c/evidence.json`。真实 QQ 和真实模型不在这项测试范围内。
+- 新建空会话尚无 rollout；必须在已创建的连接直接开始第一轮，不能先读取/恢复它。已有持久历史的托管会话才走 resume。将这个真实联调发现加入自动回归。
+
+以下为首版来源记录，保留日期与当时版本，不能视为本日所有组件的最新状态。
+
 调查日期：2026-09-18（Asia/Shanghai）。优先官方仓库，源码在开发时实际下载核对。在线文档会变化，下面保存了决定实现的提交标识。
 
 ## Codex

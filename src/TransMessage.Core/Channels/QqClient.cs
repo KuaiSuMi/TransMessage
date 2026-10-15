@@ -82,7 +82,7 @@ public sealed class QqClient(HttpClient http, Func<(string AppId, string Secret)
             var token = await GetTokenAsync(ct);
             using var request = new HttpRequestMessage(method, new Uri(_api, path));
             request.Headers.Authorization = new AuthenticationHeaderValue("QQBot", token);
-            request.Headers.UserAgent.ParseAdd("TransMessage/0.1.0");
+            request.Headers.UserAgent.ParseAdd("TransMessage/" + BuildInfo.Version);
             if (body is not null) request.Content = JsonContent.Create(body);
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
             timeout.CancelAfter(TimeSpan.FromSeconds(15));

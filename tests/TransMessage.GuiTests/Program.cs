@@ -22,6 +22,12 @@ public static class Program
             var paths = new AppPaths(Path.Combine(output, "state-" + theme)); var config = new ConfigStore(paths);
             config.Update(c => { c.Ui.Theme = theme; c.Update.Check = false; c.Server.Enabled = false; c.Codex.Enabled = false; c.Downloads.Enabled = false; });
             var runtime = new AppRuntime(paths); var window = new MainWindow(runtime); var navigation = (ListBox)window.FindName("Navigation");
+            runtime.Dispatcher.History.Clear();
+            foreach (var status in new[] { "sent", "failed", "uncertain" })
+            {
+                var key = runtime.Dispatcher.History.Begin(new() { Title = "Codex 完成 · TransMessage", Message = "通知历史与远程回答已完成验证。", Source = "codex" });
+                runtime.Dispatcher.History.Complete(key, status, status == "sent" ? null : "连接中断，请检查送达状态。");
+            }
             var root = (FrameworkElement)window.Content;
             for (var i = 0; i < navigation.Items.Count; i++)
             {
@@ -30,8 +36,12 @@ public static class Program
                 Render(root, Path.Combine(output, theme + "-" + tag + ".png"), 1050, 760);
                 Console.WriteLine($"PASS render {theme}/{tag}");
             }
-            navigation.SelectedIndex = 6; root.LayoutTransform = new ScaleTransform(2, 2);
-            Render(root, Path.Combine(output, theme + "-large-text.png"), 1400, 1000);
+            root.LayoutTransform = new ScaleTransform(2, 2);
+            foreach (var tag in new[] { "settings", "remote", "history" })
+            {
+                navigation.SelectedItem = navigation.Items.Cast<ListBoxItem>().First(x => (string)x.Tag == tag);
+                Render(root, Path.Combine(output, theme + "-large-" + tag + ".png"), 1400, 1000);
+            }
             root.LayoutTransform = Transform.Identity;
             window.Exiting = true; window.Close(); runtime.DisposeAsync().AsTask().GetAwaiter().GetResult();
         }

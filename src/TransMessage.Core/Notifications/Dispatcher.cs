@@ -29,6 +29,7 @@ public sealed class DedupStore(AppPaths paths)
 
 public sealed class Dispatcher(ConfigStore config, DedupStore dedup, Sanitizer sanitizer, INotificationChannel channel, ILogger logger)
 {
+    public NotificationHistory History { get; } = new(config.Paths, sanitizer);
     private readonly SemaphoreSlim _gate = new(1, 1);
     public DeliveryResult? LastResult { get; private set; }
     public async Task<DeliveryResult> SendAsync(Notification notification, CancellationToken ct = default)
@@ -40,6 +41,7 @@ public sealed class Dispatcher(ConfigStore config, DedupStore dedup, Sanitizer s
         {
             if (config.Load().Notifications.Paused) return new(false, notification.Id, "paused", "通知已暂停。");
             if (!dedup.Reserve(notification.Id)) return new(true, notification.Id, "duplicate");
+            var historyKey = History.Begin(clean);
             try
             {
                 await channel.SendAsync(clean, ct);
@@ -50,8 +52,10 @@ public sealed class Dispatcher(ConfigStore config, DedupStore dedup, Sanitizer s
             {
                 var message = AppException.Describe(e);
                 logger.Warning("Notification delivery failed: {Code}", e is AppException app ? app.Code : e.GetType().Name);
-                LastResult = new(false, notification.Id, "failed", message);
+                var uncertain = e is not AppException failure || failure.Code is "QQ_DELIVERY_UNCERTAIN" or "QQ_SEND_SCHEMA" or "QQ_PARTIAL" || failure.Code.StartsWith("QQ_5", StringComparison.Ordinal);
+                LastResult = new(false, notification.Id, uncertain ? "uncertain" : "failed", message);
             }
+            History.Complete(historyKey, LastResult.Status, LastResult.Error);
             AtomicFile.Write(Path.Combine(config.Paths.Root, "last-delivery.json"), JsonSerializer.Serialize(
                 new { time = DateTimeOffset.UtcNow, LastResult.Ok, LastResult.Status, LastResult.Error }));
             return LastResult;

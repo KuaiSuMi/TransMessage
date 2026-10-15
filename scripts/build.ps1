@@ -1,4 +1,4 @@
-param([string]$Version = '0.1.0', [string]$Dotnet = 'dotnet')
+param([string]$Version = '0.2.0', [string]$Dotnet = 'dotnet')
 $ErrorActionPreference = 'Stop'
 $repoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 Set-Location -LiteralPath $repoRoot

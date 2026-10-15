@@ -69,7 +69,39 @@
   </Style>
   <Style TargetType="ComboBox" BasedOn="{StaticResource {x:Type Control}}">
     <Setter Property="MinHeight" Value="44"/><Setter Property="Margin" Value="0,5,0,16"/><Setter Property="Padding" Value="10,8"/>
-    <Setter Property="Foreground" Value="Black"/><Setter Property="Background" Value="White"/>
+    <Setter Property="Background" Value="{DynamicResource Page}"/><Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
+    <Setter Property="FocusVisualStyle" Value="{StaticResource FocusRing}"/>
+    <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ComboBox">
+      <Grid>
+        <ToggleButton Focusable="False" IsChecked="{Binding IsDropDownOpen, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}" ClickMode="Press">
+          <ToggleButton.Template><ControlTemplate TargetType="ToggleButton">
+            <Border x:Name="Chrome" Background="{DynamicResource Page}" BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="10">
+              <TextBlock Text="⌄" Foreground="{DynamicResource Secondary}" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="12"/>
+            </Border>
+            <ControlTemplate.Triggers><Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Chrome" Property="Background" Value="{DynamicResource Fill}"/></Trigger></ControlTemplate.Triggers>
+          </ControlTemplate></ToggleButton.Template>
+        </ToggleButton>
+        <ContentPresenter Content="{TemplateBinding SelectionBoxItem}" ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
+                          IsHitTestVisible="False" Margin="12,8,36,8" VerticalAlignment="Center"/>
+        <Popup x:Name="PART_Popup" IsOpen="{TemplateBinding IsDropDownOpen}" Placement="Bottom" AllowsTransparency="True" Focusable="False">
+          <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="10" Padding="4"
+                  MinWidth="{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}" MaxHeight="{TemplateBinding MaxDropDownHeight}">
+            <ScrollViewer CanContentScroll="True"><ItemsPresenter KeyboardNavigation.DirectionalNavigation="Contained"/></ScrollViewer>
+          </Border>
+        </Popup>
+      </Grid>
+      <ControlTemplate.Triggers><Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.45"/></Trigger></ControlTemplate.Triggers>
+    </ControlTemplate></Setter.Value></Setter>
+  </Style>
+  <Style TargetType="ComboBoxItem" BasedOn="{StaticResource {x:Type Control}}">
+    <Setter Property="MinHeight" Value="44"/><Setter Property="Padding" Value="12,8"/>
+    <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ComboBoxItem">
+      <Border x:Name="Chrome" Background="Transparent" CornerRadius="8" Padding="{TemplateBinding Padding}"><ContentPresenter VerticalAlignment="Center"/></Border>
+      <ControlTemplate.Triggers>
+        <Trigger Property="IsHighlighted" Value="True"><Setter TargetName="Chrome" Property="Background" Value="{DynamicResource Fill}"/></Trigger>
+        <Trigger Property="IsSelected" Value="True"><Setter TargetName="Chrome" Property="Background" Value="{DynamicResource Selection}"/></Trigger>
+      </ControlTemplate.Triggers>
+    </ControlTemplate></Setter.Value></Setter>
   </Style>
   <Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type Control}}">
     <Setter Property="MinHeight" Value="48"/><Setter Property="Margin" Value="0,3"/>

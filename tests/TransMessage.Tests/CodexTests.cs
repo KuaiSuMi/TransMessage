@@ -63,6 +63,23 @@ public sealed class CodexTests
         Assert.Equal("error", n!.Level);
         Assert.Null(reader.ReadLine("{broken", cfg));
     }
+    [Fact]
+    public void TransientInputEventsAreNotTreatedAsDurableDesktopState()
+    {
+        var reader = new CodexTurnReader(); var cfg = new AppConfig(); reader.ReadLine(Meta(), cfg);
+        reader.ReadLine(Event("event_msg", new { type = "task_started", turn_id = "a" }), cfg);
+        var waiting = Event("event_msg", new { type = "request_user_input", turn_id = "a", call_id = "call", questions = new[] { new { question = "sensitive-question", isSecret = true } } });
+        Assert.Null(reader.ReadLine(waiting, cfg));
+        reader.ReadLine(Event("event_msg", new { type = "user_message", message = "实现测试" }), cfg);
+        Assert.Null(reader.ReadLine(waiting, cfg));
+        reader.ReadLine(Event("event_msg", new { type = "turn_aborted", turn_id = "a" }), cfg); Assert.Null(reader.ReadLine(waiting, cfg));
+    }
+    [Fact]
+    public void ManagedSessionsDoNotBroadcastDuplicateNotifications()
+    {
+        var meta = JsonSerializer.SerializeToElement(new { id = ThreadId, cwd = "C:\\Code", originator = "transmessage", source = "exec" });
+        Assert.False(CodexEvents.ReadIdentity(meta)!.IsUser);
+    }
     [Theory]
     [InlineData("# 中文 comment\nmodel = 'example'\n[projects.'D:\\项目']\ntrust_level = 'trusted'\n")]
     [InlineData("# keep\nnotify = [ 'old.exe', 'arg' ] # existing hook\nmodel = 'example'\n[table]\nvalue = 42\n")]

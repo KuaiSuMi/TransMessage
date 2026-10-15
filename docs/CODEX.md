@@ -1,5 +1,7 @@
 # Codex 集成
 
+本页说明完成通知。0.2.0 的私聊查询、共享队列续写、托管会话等待提醒与回答见 [QQ 控制 Codex](REMOTE_CODEX.md)。托管会话的通知只发给控制者，JSONL/notify 路径跳过 `originator=transmessage`，避免重复广播。
+
 GUI → Codex → 一键连接，或：
 
 ```powershell

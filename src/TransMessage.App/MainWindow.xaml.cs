@@ -24,8 +24,8 @@ public partial class MainWindow : Window
     {
         _app = app; InitializeComponent(); ApplyTheme();
         VersionLabel.Text = $"Windows · v{BuildInfo.Version}";
-        var symbols = new[] { "\uE80F", "\uE77B", "\uE943", "\uE896", "\uE774", "\uE8D4", "\uE713", "\uE9D9" };
-        var labels = new[] { "总览", "QQ 机器人", "Codex", "下载与文件", "本地 API", "快捷集成", "设置", "诊断与日志" };
+        var symbols = new[] { "\uE80F", "\uE77B", "\uE943", "\uE8F2", "\uE81C", "\uE896", "\uE774", "\uE8D4", "\uE713", "\uE9D9" };
+        var labels = new[] { "总览", "QQ 机器人", "Codex", "QQ 控制", "通知历史", "下载与文件", "本地 API", "快捷集成", "设置", "诊断与日志" };
         for (var i = 0; i < Navigation.Items.Count; i++)
         {
             var row = new StackPanel { Orientation = Orientation.Horizontal };
@@ -40,7 +40,7 @@ public partial class MainWindow : Window
         Closed += (_, _) => { _timer.Stop(); SystemParameters.StaticPropertyChanged -= SystemSettingsChanged; };
     }
     private void SystemSettingsChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e) => Dispatcher.BeginInvoke(ApplyTheme);
-    public void Feedback(string message) => FeedbackText.Text = message;
+    public void Feedback(string message) => FeedbackText.Text = $"[{DateTimeOffset.Now:HH:mm:ss zzz}] {message}";
     public async Task ExecuteAsync(Func<Task> action)
     {
         try { await action(); }
@@ -55,6 +55,8 @@ public partial class MainWindow : Window
             case "home": Home(); break;
             case "qq": Qq(); break;
             case "codex": Codex(); break;
+            case "remote": RemoteControl(); break;
+            case "history": History(); break;
             case "downloads": Downloads(); break;
             case "api": Api(); break;
             case "integrations": Integrations(); break;
@@ -132,6 +134,9 @@ public partial class MainWindow : Window
         State(status, "qq", "QQ 机器人"); State(status, "c2c", "手机私聊"); State(status, "group", "QQ 群聊");
         State(status, "codex", "Codex"); State(status, "background", "后台服务"); State(status, "api", "本地 API"); State(status, "downloads", "下载监控");
         var last = Card("最近通知"); State(last, "delivery", "发送结果");
+        Action(Actions(last), "查看历史", () => Go("history"));
+        var control = Card("离开电脑，也能继续"); State(control, "remote", "QQ 控制"); State(control, "questions", "等待回答");
+        Action(Actions(control), "设置私聊控制", () => Go("remote"));
         var update = Card("版本与更新", $"TransMessage {BuildInfo.Version} · Windows x64"); State(update, "update", "新版本");
         Button(Actions(update), "检查更新", CheckUpdateAsync);
     }
@@ -171,11 +176,15 @@ public partial class MainWindow : Window
         foreach (var target in c.Qq.Targets)
         {
             var check = Check(targets, target.ToString(), target.Enabled);
-            check.Click += (_, _) => _app.Config.Update(cfg => { var item = cfg.Qq.Targets.First(t => t.Id == target.Id && t.Kind == target.Kind); item.Enabled = check.IsChecked == true; });
-            Action(Actions(targets), "移除「" + target.Name + "」", () =>
+            check.Click += async (_, _) => await ExecuteAsync(async () =>
+            {
+                _app.Config.Update(cfg => { var item = cfg.Qq.Targets.First(t => t.Id == target.Id && t.Kind == target.Kind); item.Enabled = check.IsChecked == true; if (!item.Enabled && cfg.RemoteCodex.OwnerId == item.Id) cfg.RemoteCodex.Enabled = false; });
+                await _app.Remote.ApplySettingsAsync();
+            });
+            Button(Actions(targets), "移除「" + target.Name + "」", async () =>
             {
                 if (MessageBox.Show(this, "移除后可重新绑定该目标。", "移除通知目标", MessageBoxButton.OKCancel, MessageBoxImage.Question, MessageBoxResult.Cancel) != MessageBoxResult.OK) return;
-                _app.Config.Update(cfg => cfg.Qq.Targets.RemoveAll(t => t.Id == target.Id && t.Kind == target.Kind)); ReloadPage();
+                _app.Config.Update(cfg => { cfg.Qq.Targets.RemoveAll(t => t.Id == target.Id && t.Kind == target.Kind); if (cfg.RemoteCodex.OwnerId == target.Id) cfg.RemoteCodex.Enabled = false; }); await _app.Remote.ApplySettingsAsync(); ReloadPage();
             });
         }
         var targetActions = Actions(targets); Action(targetActions, "刷新目标", ReloadPage); Button(targetActions, "发送测试通知", TestAsync);
@@ -340,6 +349,7 @@ public partial class MainWindow : Window
         Set("codex", (_app.Codex?.Status ?? "监听关闭") + (new CodexIntegration(_app.Paths).IsInstalled() ? " · notify 已连接" : " · notify 未集成"));
         Set("background", c.Notifications.Paused ? "运行中 · 通知已暂停" : "运行中");
         Set("api", _app.Api?.Status ?? "已关闭"); Set("downloads", _app.Files?.Status ?? "已关闭");
+        Set("remote", _app.Remote.Status); Set("questions", $"{_app.Remote.Pending.Count} 项 · 在 QQ 控制页处理");
         Set("delivery", _app.Dispatcher.LastResult is { } last ? last.Ok ? "最近发送成功" : last.Error ?? last.Status : "还没有发送记录");
         var update = _app.Updater.Cached(); Set("update", update?.Error ?? (update?.Release?.Newer == true ? "发现新版本 " + update.Release.Version : update is null ? "尚未检查" : "已是最新版本"));
         lock (_app.Errors) foreach (var (key, error) in _app.Errors) Set(key == "Downloads" ? "downloads" : key == "API" ? "api" : key.ToLowerInvariant(), error);

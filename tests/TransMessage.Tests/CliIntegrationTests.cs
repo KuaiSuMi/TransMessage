@@ -32,7 +32,7 @@ public sealed class CliIntegrationTests
         try
         {
             Assert.True(File.Exists(Exe), "Build TransMessage.App first, or set TM_TEST_EXE to the published executable.");
-            var version = await InvokeAsync(data, ["version"]); Assert.Equal(0, version.Exit); Assert.Contains("0.1.0", version.Output);
+            var version = await InvokeAsync(data, ["version"]); Assert.Equal(0, version.Exit); Assert.Contains(TransMessage.Core.BuildInfo.Version, version.Output);
             var doctor = await InvokeAsync(data, ["doctor"]); Assert.Equal(0, doctor.Exit); Assert.Contains("WARN", doctor.Output);
             var send = await InvokeAsync(data, ["send", "test"]); Assert.Equal(0, send.Exit); Assert.Single(channel.Sent);
             var success = await InvokeAsync(data, ["run", "--", "cmd", "/c", "echo hello"]); Assert.Equal(0, success.Exit); Assert.Contains("hello", success.Output);

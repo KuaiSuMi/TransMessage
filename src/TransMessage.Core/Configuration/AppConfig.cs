@@ -9,6 +9,7 @@ public sealed class AppConfig
     public NotificationSettings Notifications { get; set; } = new();
     public UpdateSettings Update { get; set; } = new();
     public UiSettings Ui { get; set; } = new();
+    public RemoteCodexSettings RemoteCodex { get; set; } = new();
 
     public void Validate()
     {
@@ -21,6 +22,14 @@ public sealed class AppConfig
         if (Downloads.Directories.Any(p => !Path.IsPathFullyQualified(p))) throw new AppException("CONFIG_PATH", "监控目录必须是绝对路径。");
         if (Ui.Theme is not ("system" or "light" or "dark")) throw new AppException("CONFIG_THEME", "界面主题无效。");
         if (Ui.TextScale is < 1 or > 2) throw new AppException("CONFIG_SCALE", "文字缩放必须介于 100%–200%。");
+        if (RemoteCodex.Mode is not ("desktop" or "managed")) throw new AppException("CONTROL_MODE", "Codex 连接方式无效。");
+        if (RemoteCodex.Executable.Length > 0 && (!Path.IsPathFullyQualified(RemoteCodex.Executable) || !RemoteCodex.Executable.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)))
+            throw new AppException("CONTROL_EXE", "请选择 Codex 原生 exe 的完整路径。");
+        if (RemoteCodex.Threads.Count > 50 || RemoteCodex.Threads.Any(t => !Guid.TryParse(t.Id, out _) || string.IsNullOrWhiteSpace(t.Name) || t.Name.Length > 100)
+            || RemoteCodex.Threads.Select(t => t.Id).Distinct().Count() != RemoteCodex.Threads.Count)
+            throw new AppException("CONTROL_THREADS", "可控会话配置无效，最多允许 50 个会话。");
+        if (RemoteCodex.Enabled && !Qq.Targets.Any(t => t.Kind == "c2c" && t.Id == RemoteCodex.OwnerId && t.Enabled))
+            throw new AppException("CONTROL_OWNER", "请先选择已启用的 QQ 私聊目标作为控制者。");
     }
 }
 
@@ -75,4 +84,19 @@ public sealed class UiSettings
     public double TextScale { get; set; } = 1;
     public bool ReduceTransparency { get; set; }
     public bool TrayHintShown { get; set; }
+}
+
+public sealed class RemoteCodexSettings
+{
+    public bool Enabled { get; set; }
+    public string OwnerId { get; set; } = "";
+    public string Executable { get; set; } = "";
+    public string Mode { get; set; } = "desktop";
+    public List<ControlledThread> Threads { get; set; } = [];
+}
+public sealed class ControlledThread
+{
+    public string Id { get; set; } = "";
+    public string Name { get; set; } = "";
+    public bool Managed { get; set; }
 }

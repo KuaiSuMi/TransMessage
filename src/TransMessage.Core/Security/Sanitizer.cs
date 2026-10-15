@@ -42,7 +42,7 @@ public sealed class Sanitizer(Func<IEnumerable<string>>? knownSecrets = null)
     }
     public static string QqText(Notification n)
     {
-        var text = $"{n.Title}\n\n{n.Message}\n\n设备：{n.Device}";
+        var text = $"[{n.Timestamp.ToLocalTime():yyyy-MM-dd HH:mm:ss zzz}]\n{n.Title}\n\n{n.Message}\n\n设备：{n.Device}";
         // Conservative local budget; do not claim this is the platform's universal limit.
         if (Encoding.UTF8.GetByteCount(text) <= 4000) return text;
         var builder = new StringBuilder();

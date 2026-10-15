@@ -36,6 +36,12 @@ public sealed class NotificationTests
         Assert.DoesNotContain("�", text);
     }
     [Fact]
+    public void QqRepliesIncludeTimestampAndTimeZone()
+    {
+        var notification = new Notification { Timestamp = new DateTimeOffset(2026, 10, 15, 4, 0, 0, TimeSpan.Zero) };
+        Assert.StartsWith($"[{notification.Timestamp.ToLocalTime():yyyy-MM-dd HH:mm:ss zzz}]", Sanitizer.QqText(notification));
+    }
+    [Fact]
     public void NormalizeAndValidate()
     {
         var clean = new Sanitizer().Clean(new() { Title = " hi\0 ", Message = " password=secret ", Tags = ["Bearer abcd"], Metadata = new() { ["field"] = "secret=asdf" } });

@@ -28,6 +28,7 @@ public static class CodexEvents
         var id = Text(meta, "id");
         if (!Guid.TryParse(id, out _)) return null;
         var client = Text(meta, "originator") ?? "unknown";
+        if (client == "transmessage") return new(id!, Text(meta, "cwd") ?? "", client, false);
         var user = true;
         if (Text(meta, "parent_thread_id") is not null || Text(meta, "agent_role") is not null) user = false;
         if (Text(meta, "agent_path") is { } path && path != "/root") user = false;
@@ -74,7 +75,7 @@ public static class CodexEvents
             Title = MessageTemplate.Expand(config.Notifications.CodexCompleted, ("project", project)),
             Message = message,
             Level = state == "failed" ? "error" : state == "cancelled" ? "warning" : "success",
-            Metadata = new() { ["client"] = identity.Client, ["status"] = state }
+            Metadata = new() { ["client"] = identity.Client, ["status"] = state, ["thread_id"] = identity.ThreadId, ["turn_id"] = turn }
         };
     }
 

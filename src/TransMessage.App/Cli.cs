@@ -85,6 +85,14 @@ internal static class Cli
         }); root.Subcommands.Add(doctor);
 
         var codex = new Command("codex", "Codex 完成通知集成");
+        var probe = new Command("probe-desktop", "只读检查现有 Desktop 控制连接和会话发现");
+        probe.SetAction(async (p, ct) =>
+        {
+            await using var app = new AppRuntime(Paths(p));
+            Console.WriteLine($"[{DateTimeOffset.Now:yyyy-MM-dd HH:mm:ss zzz}] {await app.Remote.ProbeDesktopAsync(ct)}");
+            var threads = await app.Remote.DiscoverAsync(ct);
+            Console.WriteLine($"已发现 {threads.Count} 个本机会话；未恢复会话或提交任何提示。"); return 0;
+        }); codex.Subcommands.Add(probe);
         foreach (var action in new[] { "install", "uninstall", "status" })
         {
             var sub = new Command(action); sub.SetAction(p =>

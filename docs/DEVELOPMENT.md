@@ -22,9 +22,18 @@ $env:TM_TEST_EXE = (Get-Content dist/build-info.json | ConvertFrom-Json).executa
 dotnet test tests/TransMessage.Tests --filter FullyQualifiedName~CliIntegrationTests
 ```
 
-CI push/PR 运行相同检查并上传 ZIP。v* tag 在检查完成后发布 GitHub Release。版本目前为 0.1.0；发布下一版本应同步 Directory.Build.props、应用显示文本和更新当前版本，再打相同 tag。不能仅修改 ZIP 文件名伪造版本。
+CI push/PR 运行相同检查并上传 ZIP。v* tag 在检查完成后发布 GitHub Release。版本目前为 0.2.0；发布下一版本应同步 Directory.Build.props 与 scripts/build.ps1，再打相同 tag。不能仅修改 ZIP 文件名伪造版本。
 
-`tests/TransMessage.GuiTests` 使用实际 WPF 组件渲染 8 页浅色/深色和 200% 文字样例。它验证资源/布局可渲染，不代替真实鼠标、读屏、不同 DPI/OS 和系统托盘的完整实机验收。
+`tests/TransMessage.GuiTests` 使用实际 WPF 组件渲染 10 页浅色/深色，以及设置、QQ 控制、历史的 200% 文字样例，共 26 张，历史使用独立测试数据。它验证资源/布局可渲染，不代替真实鼠标、读屏、不同 DPI/OS 和系统托盘的完整实机验收。
+
+可选原生协议联调（需要本机 Codex，不是常规 CI 前提）：
+
+```powershell
+dotnet run --project tests/TransMessage.CodexProbe
+# 可附加一个全新输出目录和 codex.exe 绝对路径
+```
+
+该探针使用真实 Codex 进程、独立 CODEX_HOME、本地脚本化模型和模拟私聊发送，验证创建空会话、开始轮次、输入请求、QQ 指令回答、官方确认与完成结果；不访问真实 QQ，不使用付费推理，也不覆盖用户 Codex 配置。输出 evidence.json。它不能代替实际模型行为、QQ 平台权限和 Desktop 消费共享队列的验收。
 
 Portable 无需安装脚本。Release 内 `scripts/install.ps1 -Destination ... [-Startup] [-Codex]` 仅复制到用户目录并建立开始菜单快捷方式；可选参数才改变启动/集成。uninstall 删除集成和快捷方式，默认保留配置；`-PurgeData` 才清理用户/portable 数据。程序目录由用户在退出托盘后删除，避免脚本递归误删任意目标。
 
