@@ -11,10 +11,11 @@ public sealed class HistoryTests
     public async Task HistoryEncryptsRedactsAndDeduplicatesDelivery()
     {
         using var data = new TestData(); var dispatcher = new Dispatcher(data.Config, new(data.Paths), new(), new RecordingChannel(), TestData.Logger);
-        var notice = new Notification { Id = "history-1", Message = "visible-result password=private-value" };
+        var notice = new Notification { Id = "history-1", Message = "visible-result password=private-value", Timestamp = new DateTimeOffset(2026, 10, 14, 12, 0, 0, TimeSpan.FromHours(5.5)).AddTicks(1234567) };
         await dispatcher.SendAsync(notice); await dispatcher.SendAsync(notice);
         var history = new NotificationHistory(data.Paths, new()); var record = Assert.Single(history.Read());
         Assert.Equal("sent", record.Status); Assert.DoesNotContain("private-value", record.Notification.Message);
+        Assert.Equal(notice.Timestamp.ToString("O"), record.Notification.Timestamp.ToString("O"));
         var bytes = File.ReadAllBytes(Path.Combine(data.Paths.Root, "history.dpapi"));
         Assert.DoesNotContain("visible-result", Encoding.UTF8.GetString(bytes));
         history.Clear(); Assert.Empty(history.Read());

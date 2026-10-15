@@ -100,9 +100,14 @@ public sealed class NetworkTests
         using var data = new TestData(); var binding = new QqBinding(data.Config); var challenge = binding.Create("c2c", "手机");
         var identified = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously); var heartbeat = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var forwarded = new TaskCompletionSource<TransMessage.Core.Codex.QqPrivateMessage>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var bindingReply = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+        const string bindingTime = "2026-10-15T12:01:02.3456789+08:00";
         await using var server = new TestServer(); server.App.UseWebSockets();
         server.App.MapPost("/app/getAppAccessToken", () => Results.Json(new { access_token = "token", expires_in = 7200 }));
-        server.App.MapPost("/v2/users/{id}/messages", () => Results.Json(new { id = "reply" }));
+        server.App.MapPost("/v2/users/{id}/messages", async (HttpContext context) =>
+        {
+            using var body = await JsonDocument.ParseAsync(context.Request.Body); bindingReply.TrySetResult(body.RootElement.GetProperty("content").GetString()!); return Results.Json(new { id = "reply" });
+        });
         server.App.Map("/gateway-test", async context =>
         {
             using var socket = await context.WebSockets.AcceptWebSocketAsync();
@@ -111,7 +116,7 @@ public sealed class NetworkTests
             var first = await socket.ReceiveAsync(buffer.AsMemory(), context.RequestAborted); using var identify = JsonDocument.Parse(buffer.AsMemory(0, first.Count));
             Assert.Equal(2, identify.RootElement.GetProperty("op").GetInt32()); Assert.Equal(1 << 25, identify.RootElement.GetProperty("d").GetProperty("intents").GetInt32()); identified.TrySetResult();
             await Send(new { op = 0, t = "READY", s = 1, d = new { session_id = "session" } });
-            var ev = new { op = 0, t = "C2C_MESSAGE_CREATE", s = 2, d = new { id = "incoming", content = "bind " + challenge.Code, author = new { user_openid = "bound-user" } } };
+            var ev = new { op = 0, t = "C2C_MESSAGE_CREATE", s = 2, d = new { id = "incoming", content = "bind " + challenge.Code, author = new { user_openid = "bound-user" }, timestamp = bindingTime } };
             await Send(ev); await Send(ev);
             await Send(new { op = 0, t = "C2C_MESSAGE_CREATE", s = 3, d = new { id = "command", content = "任务", author = new { user_openid = "bound-user" }, timestamp = DateTimeOffset.UtcNow } });
             try
@@ -125,12 +130,13 @@ public sealed class NetworkTests
         await server.StartAsync(); using var http = new HttpClient(); var qq = new QqClient(http, () => ("app", "secret"), apiBase: server.Address, tokenBase: server.Address);
         var gateway = new QqGateway(qq, binding, TestData.Logger, (type, payload) =>
         {
-            var message = TransMessage.Core.Codex.RemoteCodex.ParseMessage(type, payload); if (message is not null) forwarded.TrySetResult(message); return message is not null;
+            var message = TransMessage.Core.Codex.RemoteCodex.ParseMessage(type, payload); if (message is { Text: "任务" }) forwarded.TrySetResult(message); return message is not null;
         }); using var stop = new CancellationTokenSource();
         var url = new UriBuilder(server.Address) { Scheme = "ws", Path = "/gateway-test" }.Uri;
         var running = gateway.RunAsync(stop.Token, _ => Task.FromResult(url));
         await identified.Task.WaitAsync(TimeSpan.FromSeconds(5)); await heartbeat.Task.WaitAsync(TimeSpan.FromSeconds(5));
         var forwardedMessage = await forwarded.Task.WaitAsync(TimeSpan.FromSeconds(5)); Assert.Equal("bound-user", forwardedMessage.Sender); Assert.Equal("任务", forwardedMessage.Text);
+        Assert.StartsWith("原始时间：" + bindingTime, await bindingReply.Task.WaitAsync(TimeSpan.FromSeconds(5)));
         Assert.Single(data.Config.Load().Qq.Targets); Assert.Equal("bound-user", data.Config.Load().Qq.Targets[0].Id); stop.Cancel(); await running;
     }
     [Fact]

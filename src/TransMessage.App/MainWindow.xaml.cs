@@ -40,7 +40,7 @@ public partial class MainWindow : Window
         Closed += (_, _) => { _timer.Stop(); SystemParameters.StaticPropertyChanged -= SystemSettingsChanged; };
     }
     private void SystemSettingsChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e) => Dispatcher.BeginInvoke(ApplyTheme);
-    public void Feedback(string message) => FeedbackText.Text = $"[{DateTimeOffset.Now:HH:mm:ss zzz}] {message}";
+    public void Feedback(string message) => FeedbackText.Text = message;
     public async Task ExecuteAsync(Func<Task> action)
     {
         try { await action(); }

@@ -93,7 +93,7 @@ public sealed class RemoteCodex(ConfigStore config, Sanitizer sanitizer,
             string response;
             try { response = await ExecuteAsync(message.Text, ct); }
             catch (Exception e) { response = AppException.Describe(e); }
-            if (Authorized(message.Sender)) await NotifyAsync(message.Sender, "Codex 私聊回复", response, message.Id, ct);
+            if (Authorized(message.Sender)) await NotifyAsync(message.Sender, "Codex 私聊回复", response, message.Id, ct, message.Time);
         }
         catch (Exception e) when (e is AppException or IOException or OperationCanceledException) { Status = AppException.Describe(e); }
         finally { _commands.Release(); }
@@ -249,7 +249,11 @@ public sealed class RemoteCodex(ConfigStore config, Sanitizer sanitizer,
                     _running.TryRemove(threadId!, out _);
                     ClearRequests(threadId);
                     var state = data.TryGetProperty("turn", out var turn) ? CodexEvents.Text(turn, "status") : "unknown";
-                    await NotifyAsync(_owner, $"Codex 本轮结束 · #{threadId![..8]}", $"{allowed.Name}\n状态：{state}\n{_lastResults.GetValueOrDefault(threadId!, "无结果摘要")}\n\n继续 {threadId![..8]} 下一步要求", null, ct);
+                    DateTimeOffset? completedAt = null;
+                    if (turn.ValueKind == JsonValueKind.Object && turn.TryGetProperty("completedAt", out var stamp) && stamp.ValueKind == JsonValueKind.Number && stamp.TryGetInt64(out var seconds)
+                        && seconds >= DateTimeOffset.MinValue.ToUnixTimeSeconds() && seconds <= DateTimeOffset.MaxValue.ToUnixTimeSeconds())
+                        completedAt = DateTimeOffset.FromUnixTimeSeconds(seconds);
+                    await NotifyAsync(_owner, $"Codex 本轮结束 · #{threadId![..8]}", $"{allowed.Name}\n状态：{state}\n{_lastResults.GetValueOrDefault(threadId!, "无结果摘要")}\n\n继续 {threadId![..8]} 下一步要求", null, ct, completedAt);
                 }
             }
         }
@@ -278,7 +282,7 @@ public sealed class RemoteCodex(ConfigStore config, Sanitizer sanitizer,
             && (!data.TryGetProperty("availableDecisions", out var decisions) || decisions.ValueKind == JsonValueKind.Null || decisions.ValueKind == JsonValueKind.Array && decisions.EnumerateArray().Any(d => d.ValueKind == JsonValueKind.String && d.GetString() == "accept"));
         var pending = new PendingInput(Convert.ToHexString(RandomNumberGenerator.GetBytes(4)), data.GetProperty("threadId").GetString()!, data.GetProperty("turnId").GetString()!, method,
             Sanitizer.Truncate(summary, 1400), questions.ToArray(), approve, DateTimeOffset.UtcNow.AddMinutes(15));
-        var preview = Sanitizer.QqText(new() { Title = $"Codex 等待你 · #{pending.ThreadId[..8]}", Message = Describe(pending) });
+        var preview = Sanitizer.QqText(new() { Title = $"Codex 等待你 · #{pending.ThreadId[..8]}", Message = Describe(pending), Metadata = new() { ["timestamp_source"] = "received" } });
         return preview.Contains("…内容过长，已截断", StringComparison.Ordinal) ? pending with { CanApprove = false } : pending;
     }
     public static string Describe(PendingInput pending)
@@ -328,10 +332,17 @@ public sealed class RemoteCodex(ConfigStore config, Sanitizer sanitizer,
         catch (TimeoutException) { throw new AppException("CONTROL_ANSWER_UNCERTAIN", "回答已发出，但未收到 Codex 确认；请查询任务状态，不要重复批准。"); }
         finally { _requests.TryRemove(ackKey, out _); }
     }
-    private Task NotifyAsync(string owner, string title, string text, string? replyId, CancellationToken ct)
+    private Task NotifyAsync(string owner, string title, string text, string? replyId, CancellationToken ct, DateTimeOffset? originalTimestamp = null)
     {
         if (!Authorized(owner) || ct.IsCancellationRequested) return Task.CompletedTask;
-        var notification = sanitizer.Clean(new Notification { Title = title, Message = text, Source = "qq-control" });
+        var notification = sanitizer.Clean(new Notification
+        {
+            Title = title,
+            Message = text,
+            Source = "qq-control",
+            Timestamp = originalTimestamp ?? DateTimeOffset.UtcNow,
+            Metadata = new() { ["timestamp_source"] = originalTimestamp.HasValue ? "original" : "received" }
+        });
         if (!_notices.Writer.TryWrite((owner, notification, replyId))) Status = "私聊回复队列已满，请在电脑查看待回答问题。";
         return Task.CompletedTask;
     }

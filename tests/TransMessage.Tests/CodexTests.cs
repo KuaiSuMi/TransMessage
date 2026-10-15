@@ -34,6 +34,21 @@ public sealed class CodexTests
     [InlineData("You are creating a CONTEXT CHECKPOINT")]
     public void InternalRequestsAreIgnored(string text) => Assert.Null(CodexEvents.ParseNotify(Payload(text), new(), User));
     [Fact]
+    public void CompletionKeepsRolloutTimestampAndLabelsMissingHookTime()
+    {
+        const string original = "2026-10-14T21:34:56.1234567-04:00";
+        var reader = new CodexTurnReader(); var cfg = new AppConfig(); reader.ReadLine(Meta(), cfg);
+        reader.ReadLine(Event("event_msg", new { type = "task_started", turn_id = "a" }), cfg);
+        reader.ReadLine(Event("event_msg", new { type = "user_message", message = "检查" }), cfg);
+        var line = JsonSerializer.Serialize(new { timestamp = original, type = "event_msg", payload = new { type = "task_complete", turn_id = "a", last_agent_message = "完成" } });
+        var notification = reader.ReadLine(line, cfg)!;
+        Assert.Equal(original, notification.Timestamp.ToString("O")); Assert.Equal("original", notification.Metadata["timestamp_source"]);
+        Assert.StartsWith("原始时间：" + original, TransMessage.Core.Security.Sanitizer.QqText(notification));
+        var hook = CodexEvents.ParseNotify(Payload(), cfg, User)!; Assert.Equal("received", hook.Metadata["timestamp_source"]);
+        var timestampedHook = Payload()[..^1] + ",\"timestamp\":\"" + original + "\"}";
+        Assert.Equal(original, CodexEvents.ParseNotify(timestampedHook, cfg, User)!.Timestamp.ToString("O"));
+    }
+    [Fact]
     public void SubagentAndInternalMetadataAreRejected()
     {
         using var json = JsonDocument.Parse("""{"id":"12345678-1234-1234-1234-123456789012","source":{"subagent":"review"},"originator":"codex-tui"}""");

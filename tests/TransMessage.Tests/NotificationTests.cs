@@ -38,8 +38,10 @@ public sealed class NotificationTests
     [Fact]
     public void QqRepliesIncludeTimestampAndTimeZone()
     {
-        var notification = new Notification { Timestamp = new DateTimeOffset(2026, 10, 15, 4, 0, 0, TimeSpan.Zero) };
-        Assert.StartsWith($"[{notification.Timestamp.ToLocalTime():yyyy-MM-dd HH:mm:ss zzz}]", Sanitizer.QqText(notification));
+        var notification = new Notification { Timestamp = DateTimeOffset.Parse("2026-10-15T12:34:56.1234567+05:30", System.Globalization.CultureInfo.InvariantCulture) };
+        Assert.StartsWith("原始时间：2026-10-15T12:34:56.1234567+05:30\n", Sanitizer.QqText(notification));
+        var received = Sanitizer.QqText(notification with { Metadata = new() { ["timestamp_source"] = "received" } });
+        Assert.StartsWith("接收时间（来源未提供原始时间）：", received);
     }
     [Fact]
     public void NormalizeAndValidate()

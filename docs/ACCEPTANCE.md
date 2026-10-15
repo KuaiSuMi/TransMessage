@@ -1,11 +1,13 @@
-# 0.2.0 验收记录
+# 0.2.1 验收记录
+
+本补丁修正 QQ 消息时间来源：原私聊/绑定消息、JSONL 完成事件、托管 turn.completedAt 的时间被保留，包含原时区偏移和小数秒；未提供原始时间时明确标注接收时间。移除误加到 GUI 反馈中的时间前缀。原生 Codex 和 Desktop 的既有联调结果按原测试日期复用，协议连接未改。
 
 日期：2026-10-15（Asia/Shanghai）。Windows 10 专业版 22H2 / 10.0.19045 x64；.NET SDK 10.0.401。发布运行时 .NET 10.0.12。精确构建时间、提交和 SHA256 见 `dist/build-info.json`。
 
 | 项目 | 本次结果 |
 |---|---|
 | 编译与依赖 | locked restore、format、build 通过，零警告/错误；NuGet 全依赖审计未发现已知漏洞 |
-| 自动测试 | 75 项通过、0 失败、0 跳过；覆盖历史加密/脱敏/保留/损坏保护，控制身份/时效/去重，Desktop 只入队，托管首次启动/忙碌保护，问题关联/失效/敏感输入/单次审批，以及已有功能回归 |
+| 自动测试 | 77 项通过、0 失败、0 跳过；新增/加强原始时间、偏移、小数秒、缺失时间标注与真实 HTTP 发送正文断言；历史、安全控制及已有功能回归通过 |
 | QQ 事件 | 模拟 HTTP/WebSocket 验证绑定、心跳、私聊指令转交及发送错误处理 |
 | 真实 Codex 进程 | 12:12:58 +08:00，原生 Codex 0.162.0-alpha.17.2，在隔离 CODEX_HOME 和本地脚本化模型下：创建→启动→输入请求→私聊指令回答→官方确认→完成，通过；没有使用真实 QQ 或付费模型 |
 | 现有 Desktop | 已有会话的共享队列添加→读取→删除通过，探针消息已移除。没有 resume / turn/start，没有验证 Desktop 消费执行 |
@@ -13,9 +15,9 @@
 | GUI | Apple-Style；10 页深浅色 + 设置/控制/历史各两张 200% 文字图，共 26 张新渲染，修正深色下拉框与历史错误展示 |
 | 发布 exe | 最终自包含程序的 3 项 CLI 集成测试通过，覆盖版本/诊断/发送/退出码/Codex 去重，以及后台单实例、API 启动与退出 |
 
-本次证据：`artifacts/test-results/verified.trx`、`published-v020.trx`；`artifacts/gui/`；`artifacts/native-codex-v020c/evidence.json`；`artifacts/desktop-probe.json`。探针与测试数据不打入发布包。
+本次证据：`artifacts/test-results/verified.trx`、`published-v021.trx`；`artifacts/gui/`。复用原生联调证据：`artifacts/native-codex-v020c/evidence.json`、`artifacts/desktop-probe.json`。探针与测试数据不打入发布包。
 
-**0.2.0 边界**：现有 Desktop 只支持查询和共享队列追加，不能获取其待输入状态或回答原窗口；完整等待提醒和回答仅支持 TransMessage 托管会话。队列入队不代表执行，空队列不证明完成。部分接口是实验协议，未来 Codex 变化可能明确报错。退出或切换连接会结束托管进程，普通通知设置刷新不会重启它。
+**0.2.x 边界**：现有 Desktop 只支持查询和共享队列追加，不能获取其待输入状态或回答原窗口；完整等待提醒和回答仅支持 TransMessage 托管会话。队列入队不代表执行，空队列不证明完成。部分接口是实验协议，未来 Codex 变化可能明确报错。退出或切换连接会结束托管进程，普通通知设置刷新不会重启它。
 
 新增控制尚未完成真实 QQ 手机验收；Windows 11、完整键鼠/读屏/高对比实机测试和真实发布升级尚未验证。发布包未签名，本次只生成本地 ZIP，未上传 Release。已有下载和 Codex 监测的用户确认仍有效，见 [实机记录](REAL_DEVICE_RESULTS.md)。
 

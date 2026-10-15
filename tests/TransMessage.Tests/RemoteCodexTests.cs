@@ -42,6 +42,25 @@ public sealed class RemoteCodexTests
         Assert.Single(server.Calls, x => x.GetProperty("method").GetString() == "thread/queue/add");
     }
     [Fact]
+    public async Task PrivateRepliesKeepCommandTimeAndCompletionKeepsCodexTime()
+    {
+        using var data = new TestData(); Configure(data, true); await using var server = await RpcFixture.CreateAsync();
+        var notices = new ConcurrentQueue<Notification>(); await using var remote = Remote(data, server, notices); await remote.ApplySettingsAsync();
+        var original = DateTimeOffset.UtcNow.AddMinutes(-2).ToOffset(TimeSpan.FromHours(5.5));
+        var payload = JsonSerializer.SerializeToElement(new { id = "timestamped-command", author = new { user_openid = "owner" }, content = "帮助", timestamp = original.ToString("O") });
+        await remote.ProcessAsync(RemoteCodex.ParseMessage("C2C_MESSAGE_CREATE", payload)!);
+        await TestData.UntilAsync(() => notices.Count == 1);
+        Assert.Equal(original.ToString("O"), notices.Single().Timestamp.ToString("O"));
+        Assert.StartsWith("原始时间：" + original.ToString("O"), TransMessage.Core.Security.Sanitizer.QqText(notices.Single()));
+        const long completedAt = 1760486400;
+        await server.SendAsync(new { method = "turn/completed", @params = new { threadId = CodexTests.ThreadId, turn = new { status = "completed", completedAt } } });
+        await TestData.UntilAsync(() => notices.Count == 2);
+        var completion = notices.Last(); Assert.Equal(DateTimeOffset.FromUnixTimeSeconds(completedAt), completion.Timestamp); Assert.Equal("original", completion.Metadata["timestamp_source"]);
+        await server.SendAsync(new { method = "turn/completed", @params = new { threadId = CodexTests.ThreadId, turn = new { status = "completed", completedAt = (long?)null } } });
+        await TestData.UntilAsync(() => notices.Count == 3); Assert.Equal("received", notices.Last().Metadata["timestamp_source"]);
+        await server.QuestionAsync(101); await TestData.UntilAsync(() => notices.Count == 4); Assert.Equal("received", notices.Last().Metadata["timestamp_source"]);
+    }
+    [Fact]
     public async Task ManagedContinuationUsesWorkspaceSandboxAndDoesNotRestartBusyTurn()
     {
         using var data = new TestData(); Configure(data, true); await using var server = await RpcFixture.CreateAsync();

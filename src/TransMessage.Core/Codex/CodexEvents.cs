@@ -23,6 +23,9 @@ public static class CodexEvents
     public static string? Text(JsonElement value, string key) => value.ValueKind == JsonValueKind.Object
         && value.TryGetProperty(key, out var field) && field.ValueKind == JsonValueKind.String ? field.GetString() : null;
 
+    public static DateTimeOffset? Timestamp(JsonElement value) => value.ValueKind == JsonValueKind.Object && value.TryGetProperty("timestamp", out var timestamp)
+        && timestamp.ValueKind == JsonValueKind.String && timestamp.TryGetDateTimeOffset(out var time) ? time : null;
+
     public static SessionIdentity? ReadIdentity(JsonElement meta)
     {
         var id = Text(meta, "id");
@@ -56,12 +59,12 @@ public static class CodexEvents
             if (!root.TryGetProperty("input-messages", out var inputs) || inputs.ValueKind != JsonValueKind.Array) return null;
             var input = inputs.EnumerateArray().Where(p => p.ValueKind == JsonValueKind.String).Select(p => p.GetString()).LastOrDefault();
             if (!IsRealInput(input)) return null;
-            return Create(config, identity with { Client = client }, turn, input!, Text(root, "last-assistant-message"), "completed", null, sanitizer);
+            return Create(config, identity with { Client = client }, turn, input!, Text(root, "last-assistant-message"), "completed", null, sanitizer, Timestamp(root));
         }
         catch (JsonException) { return null; }
     }
 
-    public static Notification Create(AppConfig config, SessionIdentity identity, string turn, string input, string? result, string state, long? duration, Sanitizer? sanitizer = null)
+    public static Notification Create(AppConfig config, SessionIdentity identity, string turn, string input, string? result, string state, long? duration, Sanitizer? sanitizer = null, DateTimeOffset? timestamp = null)
     {
         sanitizer ??= new Sanitizer(); input = sanitizer.Redact(input); result = sanitizer.Redact(result);
         var project = Path.GetFileName(identity.Cwd.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
@@ -71,11 +74,12 @@ public static class CodexEvents
         return new Notification
         {
             Id = $"codex:{identity.ThreadId}:{turn}",
+            Timestamp = timestamp ?? DateTimeOffset.UtcNow,
             Source = "codex",
             Title = MessageTemplate.Expand(config.Notifications.CodexCompleted, ("project", project)),
             Message = message,
             Level = state == "failed" ? "error" : state == "cancelled" ? "warning" : "success",
-            Metadata = new() { ["client"] = identity.Client, ["status"] = state, ["thread_id"] = identity.ThreadId, ["turn_id"] = turn }
+            Metadata = new() { ["client"] = identity.Client, ["status"] = state, ["thread_id"] = identity.ThreadId, ["turn_id"] = turn, ["timestamp_source"] = timestamp.HasValue ? "original" : "received" }
         };
     }
 
@@ -156,7 +160,7 @@ public sealed class CodexTurnReader
                     _turn = null;
                     var state = eventType == "turn_aborted" ? "cancelled" : payload.TryGetProperty("error", out var error) && error.ValueKind == JsonValueKind.Object ? "failed" : "completed";
                     var duration = payload.TryGetProperty("duration_ms", out var millis) && millis.TryGetInt64(out var number) ? (long?)number : null;
-                    return config.Codex.Enabled ? CodexEvents.Create(config, Identity, turn, _input!, CodexEvents.Text(payload, "last_agent_message"), state, duration, sanitizer) : null;
+                    return config.Codex.Enabled ? CodexEvents.Create(config, Identity, turn, _input!, CodexEvents.Text(payload, "last_agent_message"), state, duration, sanitizer, CodexEvents.Timestamp(root)) : null;
             }
         }
         catch (JsonException) { _valid = false; }

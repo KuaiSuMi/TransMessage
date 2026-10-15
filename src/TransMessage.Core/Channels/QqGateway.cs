@@ -84,7 +84,18 @@ public sealed class QqGateway(QqClient qq, QqBinding binding, ILogger logger, Fu
                                 TargetBound?.Invoke();
                                 if (data.TryGetProperty("id", out var id))
                                 {
-                                    try { await qq.SendTextAsync(target, "TransMessage 已绑定。回到电脑点击“发送测试通知”验证主动消息权限。", ct, id.GetString()); }
+                                    try
+                                    {
+                                        var timestamp = data.TryGetProperty("timestamp", out var stamp) && stamp.ValueKind == JsonValueKind.String && stamp.TryGetDateTimeOffset(out var time) ? (DateTimeOffset?)time : null;
+                                        var reply = new Notifications.Notification
+                                        {
+                                            Title = "TransMessage 已绑定",
+                                            Message = "回到电脑点击“发送测试通知”验证主动消息权限。",
+                                            Timestamp = timestamp ?? DateTimeOffset.UtcNow,
+                                            Metadata = new() { ["timestamp_source"] = timestamp.HasValue ? "original" : "received" }
+                                        };
+                                        await qq.SendTextAsync(target, Security.Sanitizer.QqText(reply), ct, id.GetString());
+                                    }
                                     catch (Exception e) { logger.Warning("Binding reply failed: {Kind}", e.GetType().Name); }
                                 }
                             }
