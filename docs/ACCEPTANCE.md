@@ -4,10 +4,10 @@
 
 - format、build 通过，零警告/错误。
 - 87 项相关测试通过，覆盖附件和问答包装、Markdown、长名称、组合 emoji、脱敏、hook 与会话解析一致性、配置不被重命名，以及现有通知、Desktop、多会话、私聊、历史和网络回归。
-- 发布标签仍执行仓库完整验证与自包含 exe 的 CLI 门禁；结果以对应 Actions 记录为准。
+- 本地发布 ZIP 内自包含 exe 的 3 项 CLI 测试通过；[标签发布门禁](https://github.com/KuaiSuMi/TransMessage/actions/runs/38705735562)通过完整 103 项测试、格式/构建、GUI 渲染、依赖审计和 3 项发布 CLI 测试。[v0.2.4](https://github.com/KuaiSuMi/TransMessage/releases/tag/v0.2.4) 已发布 ZIP 与 SHA256SUMS，可供软件内检查更新。
 - GUI 样式、下载监控、更新与依赖未改变，复用 0.2.2 的界面渲染和 0.2.3 的公开更新源升级/回滚验证，不重复这些本机检查。
 
-证据：`artifacts/test-results/short-names-v024.trx`。未进行真实 QQ 收发复测；发布包未签名。名称采用规则提取，不生成语义摘要；超长名称末尾显示省略号。
+证据：`artifacts/test-results/short-names-v024.trx`、`published-v024.trx`及上述 Actions 记录。未进行真实 QQ 收发复测；发布包未签名。名称采用规则提取，不生成语义摘要；超长名称末尾显示省略号。
 
 ---
 
