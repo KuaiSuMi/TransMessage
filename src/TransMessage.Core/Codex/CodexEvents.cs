@@ -66,9 +66,9 @@ public static class CodexEvents
 
     public static Notification Create(AppConfig config, SessionIdentity identity, string turn, string input, string? result, string state, long? duration, Sanitizer? sanitizer = null, DateTimeOffset? timestamp = null)
     {
-        sanitizer ??= new Sanitizer(); input = sanitizer.Redact(input); result = sanitizer.Redact(result);
+        sanitizer ??= new Sanitizer(); input = TaskName.Short(input, sanitizer); result = sanitizer.Redact(result);
         var project = Path.GetFileName(identity.Cwd.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
-        var message = $"项目：{project}\n任务：{Sanitizer.Truncate(input, 180)}\n状态：{state switch { "failed" => "失败", "cancelled" => "已取消", _ => "本轮结束" }}\n客户端：{identity.Client}";
+        var message = $"项目：{project}\n任务：{input}\n状态：{state switch { "failed" => "失败", "cancelled" => "已取消", _ => "本轮结束" }}\n客户端：{identity.Client}";
         if (duration is >= 0) message += $"\n耗时：{TimeSpan.FromMilliseconds(duration.Value):g}";
         if (config.Codex.IncludeResult && !string.IsNullOrWhiteSpace(result)) message += "\n\n结果：\n" + Sanitizer.Truncate(result, config.Codex.MaxResultChars);
         return new Notification

@@ -108,16 +108,16 @@ public sealed class RemoteCodex(ConfigStore config, Sanitizer sanitizer,
             case "帮助": return Help;
             case "任务":
                 var tasks = await TasksAsync(ct);
-                return tasks.Count == 0 ? "尚未授权会话。请在电脑的“QQ 控制”中添加。" : string.Join("\n", tasks.Select(t => $"#{t.Id[..8]} · {t.Name}\n{t.State}"));
+                return tasks.Count == 0 ? "尚未授权会话。请在电脑的“QQ 控制”中添加。" : string.Join("\n", tasks.Select(t => $"#{t.Id[..8]} · {TaskName.Short(t.Name, sanitizer)}\n{t.State}"));
             case "状态" when parts.Length == 2:
                 var task = Resolve(parts[1]); var info = await TaskStateAsync(task.Id, ct);
                 if (!task.Managed)
                 {
                     var queue = await Rpc().CallAsync("thread/queue/list", new { threadId = task.Id, limit = 100 }, ct);
                     var count = queue.GetProperty("data").GetArrayLength();
-                    return $"#{task.Id[..8]} · {task.Name}\n项目：{info.Directory}\n队列中 {count} 条（最多统计 100 条）。\nDesktop 实时状态未知；队列为空也不能证明已经执行完成。";
+                    return $"#{task.Id[..8]} · {TaskName.Short(task.Name, sanitizer)}\n项目：{info.Directory}\n队列中 {count} 条（最多统计 100 条）。\nDesktop 实时状态未知；队列为空也不能证明已经执行完成。";
                 }
-                return $"#{task.Id[..8]} · {task.Name}\n{(task.Managed ? info.State : "Desktop 实时状态未知；当前只能访问共享队列")}\n{_lastResults.GetValueOrDefault(task.Id, "尚无本次连接的完成结果。")}";
+                return $"#{task.Id[..8]} · {TaskName.Short(task.Name, sanitizer)}\n{(task.Managed ? info.State : "Desktop 实时状态未知；当前只能访问共享队列")}\n{_lastResults.GetValueOrDefault(task.Id, "尚无本次连接的完成结果。")}";
             case "继续" when parts.Length == 3:
                 return await ContinueAsync(parts[1], parts[2], ct);
             case "待回答":
@@ -254,7 +254,7 @@ public sealed class RemoteCodex(ConfigStore config, Sanitizer sanitizer,
                     if (turn.ValueKind == JsonValueKind.Object && turn.TryGetProperty("completedAt", out var stamp) && stamp.ValueKind == JsonValueKind.Number && stamp.TryGetInt64(out var seconds)
                         && seconds >= DateTimeOffset.MinValue.ToUnixTimeSeconds() && seconds <= DateTimeOffset.MaxValue.ToUnixTimeSeconds())
                         completedAt = DateTimeOffset.FromUnixTimeSeconds(seconds);
-                    await NotifyAsync(_owner, $"Codex 本轮结束 · #{threadId![..8]}", $"{allowed.Name}\n状态：{state}\n{_lastResults.GetValueOrDefault(threadId!, "无结果摘要")}\n\n继续 {threadId![..8]} 下一步要求", null, ct, completedAt);
+                    await NotifyAsync(_owner, $"Codex 本轮结束 · #{threadId![..8]}", $"{TaskName.Short(allowed.Name, sanitizer)}\n状态：{state}\n{_lastResults.GetValueOrDefault(threadId!, "无结果摘要")}\n\n继续 {threadId![..8]} 下一步要求", null, ct, completedAt);
                 }
             }
         }

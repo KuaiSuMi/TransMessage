@@ -42,6 +42,19 @@ public sealed class RemoteCodexTests
         Assert.Single(server.Calls, x => x.GetProperty("method").GetString() == "thread/queue/add");
     }
     [Fact]
+    public async Task PrivateTaskNamesAreShortWithoutRenamingStoredTasks()
+    {
+        using var data = new TestData(); Configure(data, true); await using var server = await RpcFixture.CreateAsync();
+        var name = "修复" + new string('名', 60);
+        data.Config.Update(c => c.RemoteCodex.Threads.Single().Name = name);
+        var notices = new ConcurrentQueue<Notification>(); await using var remote = Remote(data, server, notices); await remote.ApplySettingsAsync();
+        await remote.ProcessAsync(Message("任务")); await remote.ProcessAsync(Message("状态 12345678"));
+        await server.SendAsync(new { method = "turn/completed", @params = new { threadId = CodexTests.ThreadId, turn = new { status = "completed" } } });
+        await TestData.UntilAsync(() => notices.Count == 3);
+        Assert.All(notices, n => { Assert.Contains(TaskName.Short(name), n.Message); Assert.DoesNotContain(name, n.Message); });
+        Assert.Equal(name, data.Config.Load().RemoteCodex.Threads.Single().Name);
+    }
+    [Fact]
     public async Task PrivateRepliesKeepCommandTimeAndCompletionKeepsCodexTime()
     {
         using var data = new TestData(); Configure(data, true); await using var server = await RpcFixture.CreateAsync();
