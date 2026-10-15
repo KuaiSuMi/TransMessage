@@ -2,6 +2,8 @@
 
 验收日期：2026-09-18（Asia/Shanghai）。版本：0.1.0。开发与运行主机：Windows 10 专业版 22H2，10.0.19045，x64。工具链：.NET SDK 10.0.401；发布包包含 .NET 10.0.12 运行时。
 
+2026-10-15 用户完成连接和配置后，确认下载检测与 Codex 监测均通过。详见[实机测试记录](REAL_DEVICE_RESULTS.md)；以下自动测试结果仍为原开发验收记录。
+
 ## 已验证
 
 | 项目 | 结果与证据 |
@@ -28,7 +30,7 @@
 
 ## 尚未验证的外部环节
 
-1. **真实 QQ 收发**：未提供 AppID/AppSecret，未执行手机私聊、群聊或腾讯生产环境主动发送。需要用户按 [QQ_REAL_DEVICE_TEST.md](QQ_REAL_DEVICE_TEST.md) 完成；配额、主动消息权限和审核结果以腾讯控制台为准。
+1. **QQ 专项验收**：原开发验收未提供真实凭证。后续用户已确认下载检测与 Codex 监测通过，尚未逐项记录私聊、群聊、多目标开关与主动发送权限测试；其余项目按 [QQ_REAL_DEVICE_TEST.md](QQ_REAL_DEVICE_TEST.md) 完成，配额和审核结果以腾讯控制台为准。
 2. **Windows 11 与另一台设备**：本次在 Windows 10 主机验证，未在 Windows 11 或另一台干净机器执行完整验收。
 3. **完整实机 GUI 操作**：真实窗口启动成功，可访问性树可读；本机 Computer Use 驱动返回 `SetIsBorderRequired failed: 不支持此接口 (0x80004002)` 和 `coordinate input geometry is unavailable`，因此未完成真实鼠标/键盘流程、高对比系统切换和读屏验收。WPF 渲染检查不等同于这些交互通过。
 4. **真实发布升级**：下载与校验用模拟服务验证；替换、重启检查和失败回滚已实现，尚未通过公开 GitHub Release 执行一次真实跨版本升级。
