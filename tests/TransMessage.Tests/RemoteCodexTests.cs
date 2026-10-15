@@ -51,7 +51,8 @@ public sealed class RemoteCodexTests
         await remote.ProcessAsync(RemoteCodex.ParseMessage("C2C_MESSAGE_CREATE", payload)!);
         await TestData.UntilAsync(() => notices.Count == 1);
         Assert.Equal(original.ToString("O"), notices.Single().Timestamp.ToString("O"));
-        Assert.StartsWith("原始时间：" + original.ToString("O"), TransMessage.Core.Security.Sanitizer.QqText(notices.Single()));
+        var beijing = original.ToOffset(TimeSpan.FromHours(8)).ToString("yyyy-MM-dd HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture);
+        Assert.StartsWith($"原始时间：{beijing}（北京时间）\n", TransMessage.Core.Security.Sanitizer.QqText(notices.Single()));
         const long completedAt = 1760486400;
         await server.SendAsync(new { method = "turn/completed", @params = new { threadId = CodexTests.ThreadId, turn = new { status = "completed", completedAt } } });
         await TestData.UntilAsync(() => notices.Count == 2);
@@ -59,6 +60,13 @@ public sealed class RemoteCodexTests
         await server.SendAsync(new { method = "turn/completed", @params = new { threadId = CodexTests.ThreadId, turn = new { status = "completed", completedAt = (long?)null } } });
         await TestData.UntilAsync(() => notices.Count == 3); Assert.Equal("received", notices.Last().Metadata["timestamp_source"]);
         await server.QuestionAsync(101); await TestData.UntilAsync(() => notices.Count == 4); Assert.Equal("received", notices.Last().Metadata["timestamp_source"]);
+    }
+    [Fact]
+    public void QuestionDeadlineUsesBeijingTimeAcrossMidnight()
+    {
+        var pending = new PendingInput("A1B2C3D4", CodexTests.ThreadId, "turn", "item/tool/requestUserInput", "请选择", [], false,
+            DateTimeOffset.Parse("2026-10-15T23:59:59.1234567Z", System.Globalization.CultureInfo.InvariantCulture));
+        Assert.Contains("有效至 2026-10-16 07:59:59（北京时间）\n", RemoteCodex.Describe(pending));
     }
     [Fact]
     public async Task ManagedContinuationUsesWorkspaceSandboxAndDoesNotRestartBusyTurn()

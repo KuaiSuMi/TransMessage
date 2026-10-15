@@ -35,13 +35,16 @@ public sealed class NotificationTests
         var text = Sanitizer.QqText(new() { Message = value }); Assert.True(Encoding.UTF8.GetByteCount(text) <= 4000);
         Assert.DoesNotContain("�", text);
     }
-    [Fact]
-    public void QqRepliesIncludeTimestampAndTimeZone()
+    [Theory]
+    [InlineData("2026-10-15T12:34:56.1234567+05:30", "2026-10-15 15:04:56")]
+    [InlineData("2026-10-15T23:59:59.9999999Z", "2026-10-16 07:59:59")]
+    [InlineData("2026-10-14T21:34:56.1234567-04:00", "2026-10-15 09:34:56")]
+    public void QqRepliesShowBeijingTimeToSeconds(string original, string expected)
     {
-        var notification = new Notification { Timestamp = DateTimeOffset.Parse("2026-10-15T12:34:56.1234567+05:30", System.Globalization.CultureInfo.InvariantCulture) };
-        Assert.StartsWith("原始时间：2026-10-15T12:34:56.1234567+05:30\n", Sanitizer.QqText(notification));
+        var notification = new Notification { Timestamp = DateTimeOffset.Parse(original, System.Globalization.CultureInfo.InvariantCulture) };
+        Assert.StartsWith($"原始时间：{expected}（北京时间）\n", Sanitizer.QqText(notification));
         var received = Sanitizer.QqText(notification with { Metadata = new() { ["timestamp_source"] = "received" } });
-        Assert.StartsWith("接收时间（来源未提供原始时间）：", received);
+        Assert.StartsWith($"接收时间（来源未提供原始时间）：{expected}（北京时间）\n", received);
     }
     [Fact]
     public void NormalizeAndValidate()

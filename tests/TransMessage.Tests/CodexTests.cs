@@ -43,7 +43,7 @@ public sealed class CodexTests
         var line = JsonSerializer.Serialize(new { timestamp = original, type = "event_msg", payload = new { type = "task_complete", turn_id = "a", last_agent_message = "完成" } });
         var notification = reader.ReadLine(line, cfg)!;
         Assert.Equal(original, notification.Timestamp.ToString("O")); Assert.Equal("original", notification.Metadata["timestamp_source"]);
-        Assert.StartsWith("原始时间：" + original, TransMessage.Core.Security.Sanitizer.QqText(notification));
+        Assert.StartsWith("原始时间：2026-10-15 09:34:56（北京时间）\n", TransMessage.Core.Security.Sanitizer.QqText(notification));
         var hook = CodexEvents.ParseNotify(Payload(), cfg, User)!; Assert.Equal("received", hook.Metadata["timestamp_source"]);
         var timestampedHook = Payload()[..^1] + ",\"timestamp\":\"" + original + "\"}";
         Assert.Equal(original, CodexEvents.ParseNotify(timestampedHook, cfg, User)!.Timestamp.ToString("O"));

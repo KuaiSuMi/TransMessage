@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Globalization;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Threading.Channels;
@@ -287,7 +288,8 @@ public sealed class RemoteCodex(ConfigStore config, Sanitizer sanitizer,
     }
     public static string Describe(PendingInput pending)
     {
-        var text = $"问题码 {pending.Code} · 有效至 {pending.ExpiresAt.ToLocalTime():HH:mm:ss zzz}\n{pending.Summary}";
+        var expires = pending.ExpiresAt.ToOffset(TimeSpan.FromHours(8)).ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture);
+        var text = $"问题码 {pending.Code} · 有效至 {expires}（北京时间）\n{pending.Summary}";
         foreach (var q in pending.Questions.Select((q, i) => (q, i)))
             text += $"\n{q.i + 1}. {(q.q.Secret ? "敏感问题，请在电脑回答" : q.q.Text)}" + (q.q.Secret ? "" : string.Concat(q.q.Options.Select((o, i) => $"\n  {i + 1}) {o}")));
         return text + (pending.Questions.Length > 0 ? $"\n回答 {pending.Code} 答案" + (pending.Questions.Length > 1 ? "1 | 答案2（按问题顺序）" : "（可填选项编号）")

@@ -136,7 +136,7 @@ public sealed class NetworkTests
         var running = gateway.RunAsync(stop.Token, _ => Task.FromResult(url));
         await identified.Task.WaitAsync(TimeSpan.FromSeconds(5)); await heartbeat.Task.WaitAsync(TimeSpan.FromSeconds(5));
         var forwardedMessage = await forwarded.Task.WaitAsync(TimeSpan.FromSeconds(5)); Assert.Equal("bound-user", forwardedMessage.Sender); Assert.Equal("任务", forwardedMessage.Text);
-        Assert.StartsWith("原始时间：" + bindingTime, await bindingReply.Task.WaitAsync(TimeSpan.FromSeconds(5)));
+        Assert.StartsWith("原始时间：2026-10-15 12:01:02（北京时间）\n", await bindingReply.Task.WaitAsync(TimeSpan.FromSeconds(5)));
         Assert.Single(data.Config.Load().Qq.Targets); Assert.Equal("bound-user", data.Config.Load().Qq.Targets[0].Id); stop.Cancel(); await running;
     }
     [Fact]
