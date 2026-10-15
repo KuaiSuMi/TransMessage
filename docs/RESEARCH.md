@@ -21,7 +21,8 @@
 - `codex-rs/core/src/hook_runtime.rs`：由共享 core 发出完成 hook，client 来自 app-server client name；不能只凭 client 字符串区分子代理。
 - `codex-rs/protocol/src/protocol.rs`：SessionMeta 包含 id/source/parent_thread_id/thread_source/agent_path；TurnStarted/TurnComplete 的 JSONL wire 名称为 task_started/task_complete，也接受 turn_started/turn_complete。完成事件含 turn_id、last_agent_message 和可选 error/duration_ms。
 - app-server 的 turn/completed 面向已连接的宿主会话，不是所有 Desktop/VS Code 的现成系统广播总线。没有建立另一个 app-server 来冒充对现有客户端的订阅。
-- 本版采用 notify + 只读 JSONL watcher，二者共享持久去重键。只接受可识别的用户会话、真实 user_message 和匹配 turn；subagent/internal/不认识的 source 安全跳过。后台标题生成以输入前缀再过滤。数据格式变化时不猜测。
+- 本版采用 notify + 只读 JSONL watcher，二者共享持久去重键。只接受可识别的用户会话、匹配轮次的用户输入；除 CLI 的 `user_message`，当前 Desktop 使用 `item_completed`，其中 `item.type=UserMessage`、`content[].type=text`，并校验 thread_id 和 turn_id。subagent/internal/不认识的 source 安全跳过。后台标题生成以输入前缀再过滤。数据格式变化时不猜测。
+- 2026-10-15 只读核对本机 Desktop 日志，发现其用户输入保存在 response_item 和带轮次归属的 item_completed 中，不产生旧监听器依赖的 user_message。0.2.2 使用后者进行归属匹配；按生产解析器回放当天 6 个用户会话的 16 次完成，全部识别。未向 QQ 补发历史消息。证据：`artifacts/desktop-replay-v022/evidence.json`。
 - 本机只读检查最近三个 session_meta（未打印消息内容）：Desktop 0.154.0-alpha.6.2 / 0.155.0-alpha.2.6 均为 source=vscode、originator=Codex Desktop、thread_source=user，无 parent。与当前身份过滤器匹配；这只验证元数据兼容，不能替代 QQ 完成通知实机测试。
 
 ## QQ

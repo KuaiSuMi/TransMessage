@@ -29,9 +29,10 @@ public sealed class CodexSessionWatcher(ConfigStore config, Func<Notification, C
         _watcher = new(directory, "*.jsonl") { IncludeSubdirectories = true, NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName | NotifyFilters.Size };
         _watcher.Changed += OnChange; _watcher.Created += OnChange; _watcher.Renamed += OnChange;
         _watcher.Error += (_, _) => { Status = "会话事件缓冲溢出，正在重新扫描"; Rescan(directory); };
-        foreach (var file in Directory.EnumerateFiles(directory, "*.jsonl", SearchOption.AllDirectories).OrderByDescending(File.GetLastWriteTimeUtc).Take(200))
-            await ReadAsync(file, false, ct);
+        var existing = Directory.EnumerateFiles(directory, "*.jsonl", SearchOption.AllDirectories).OrderByDescending(File.GetLastWriteTimeUtc).Take(200)
+            .Select(path => (Path: path, Length: new FileInfo(path).Length)).ToArray();
         _watcher.EnableRaisingEvents = true;
+        foreach (var file in existing) await ReadAsync(file.Path, false, ct, file.Length);
         // Reconcile appends that raced with the startup scan, without replaying history.
         Rescan(directory);
         Status = _cursors.Values.Any(c => c.Reader.Identity is { IsUser: true }) ? "已监听本地用户会话" : "当前会话格式无法可靠识别；未知事件不发送";
@@ -57,7 +58,7 @@ public sealed class CodexSessionWatcher(ConfigStore config, Func<Notification, C
         if (_dirty.Count < 1000) _dirty.TryAdd(e.FullPath, 0);
         _signal.Writer.TryWrite(true);
     }
-    private async Task ReadAsync(string path, bool emit, CancellationToken ct)
+    private async Task ReadAsync(string path, bool emit, CancellationToken ct, long? initialEnd = null)
     {
         try
         {
@@ -66,21 +67,15 @@ public sealed class CodexSessionWatcher(ConfigStore config, Func<Notification, C
             {
                 if (_cursors.Count >= 500) _cursors.Remove(_cursors.Keys.First());
                 cursor = new Cursor(); _cursors[path] = cursor;
-                // Existing huge sessions: read metadata and a bounded tail, never the entire history.
-                if (file.Length > 4 * 1024 * 1024)
-                {
-                    using var header = new StreamReader(file, Encoding.UTF8, true, 4096, true);
-                    var first = CodexEvents.ReadBoundedLine(header, 1024 * 1024);
-                    if (first is not null) cursor.Reader.ReadLine(first, config.Load());
-                    cursor.Offset = file.Length - 4 * 1024 * 1024; cursor.Oversized = true;
-                }
             }
             if (file.Length < cursor.Offset) { _cursors.Remove(path); return; }
             file.Position = cursor.Offset;
             var buffer = new byte[16384];
             int read;
             var current = config.Load();
-            while ((read = await file.ReadAsync(buffer, ct)) > 0)
+            // Rebuild active turns from the start; a fixed tail can omit their input. Snapshot the end so busy sessions yield to others.
+            var end = Math.Min(initialEnd ?? file.Length, file.Length);
+            while (cursor.Offset < end && (read = await file.ReadAsync(buffer.AsMemory(0, (int)Math.Min(buffer.Length, end - cursor.Offset)), ct)) > 0)
             {
                 cursor.Offset += read;
                 for (var i = 0; i < read; i++)

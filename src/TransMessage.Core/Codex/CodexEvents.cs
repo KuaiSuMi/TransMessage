@@ -151,6 +151,15 @@ public sealed class CodexTurnReader
                         _valid &= CodexEvents.IsRealInput(_input);
                     }
                     break;
+                case "item_completed":
+                    if (_turn is not null && CodexEvents.Text(payload, "turn_id") == _turn && CodexEvents.Text(payload, "thread_id") == Identity.ThreadId
+                        && payload.TryGetProperty("item", out var item) && CodexEvents.Text(item, "type") == "UserMessage"
+                        && item.TryGetProperty("content", out var content) && content.ValueKind == JsonValueKind.Array)
+                    {
+                        _input = string.Join("\n", content.EnumerateArray().Where(c => CodexEvents.Text(c, "type") == "text").Select(c => CodexEvents.Text(c, "text")));
+                        _valid &= CodexEvents.IsRealInput(_input);
+                    }
+                    break;
                 case "task_complete":
                 case "turn_complete":
                 case "turn_aborted":
