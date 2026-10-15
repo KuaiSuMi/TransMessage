@@ -7,7 +7,9 @@
 - 发布 ZIP 内自包含 exe 的 3 项 CLI 集成测试通过。
 - 未改动 GUI 样式、下载监控、更新与依赖；复用 0.2.2 的相应测试、26 张界面渲染和依赖审计结果，没有重复无关检查。
 
-证据：`artifacts/test-results/beijing-v023.trx`、`published-v023.trx`。未进行真实 QQ 收发复测；未签名，未上传 GitHub Release。控制模式边界与此前相同，见下方记录。
+证据：`artifacts/test-results/beijing-v023.trx`、`published-v023.trx`。未进行真实 QQ 收发复测；发布包未签名。控制模式边界与此前相同，见下方记录。
+
+2026-10-15 软件内更新验收：现有更新入口与替换逻辑无需修改。[v0.2.3](https://github.com/KuaiSuMi/TransMessage/releases/tag/v0.2.3) 已通过 [tag 发布门禁](https://github.com/KuaiSuMi/TransMessage/actions/runs/38703171454)，发布 Windows ZIP 与 SHA256SUMS。隔离目录中使用真实 0.2.1 exe 执行与软件界面相同的更新路径，完成公开更新源发现、下载、校验、替换、后台重启；版本变为 0.2.3，配置保持不变，并保留 0.2.1 备份。另用无效新版验证自动回滚及旧版重新启动。证据：`artifacts/update-e2e/run-20261015-080402/evidence.json`、`artifacts/update-e2e/run-20261015-080807/evidence.json`。未替换用户正在运行的实例，未操作真实 QQ。
 
 ---
 
