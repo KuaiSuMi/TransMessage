@@ -4,8 +4,10 @@
 
 - 旧实现复现：启用控制时退出等待 15 秒超时；关闭控制的对照通过。证据：`artifacts/test-results/exit-before.trx`。
 - 修复后 19 项相关测试通过。新增真实 GUI 进程测试配合本地假 Codex 子进程，覆盖启用/关闭控制、单实例、退出码为 0、连接子进程结束、相同数据目录再次启动并再次退出。窗口唤起也纳入发布包测试。证据：`artifacts/test-results/exit-v025.trx`。
+- 最终 ZIP 解压后的 4 项 CLI 测试通过，包含退出前后两次真实窗口唤起。证据：`artifacts/test-results/published-v025.trx`。
+- 本机旧进程窗口句柄为 0、IPC 不可连接；清理该残留、备份旧 exe、替换为已测 0.2.5 后，重新打开成功并获得可见窗口句柄，配置文件没有改写。证据：`artifacts/recovery-v025.json`。
 - 测试不连接真实 QQ 或提交 Codex 任务；界面样式、配置格式、消息内容与更新机制未改变。
-- 发布仍执行完整 CI 与发布程序 CLI 门禁；结果以对应 Actions 记录为准。
+- [标签发布门禁](https://github.com/KuaiSuMi/TransMessage/actions/runs/38871325462)已通过完整自动测试、格式/构建、GUI 渲染、依赖审计和发布 CLI 检查。[v0.2.5](https://github.com/KuaiSuMi/TransMessage/releases/tag/v0.2.5) 已发布 ZIP 与 SHA256SUMS，可供软件内更新。
 
 未执行人工托盘鼠标点击和真实 QQ 收发复测；进程测试调用托盘共用的退出入口。发布包未签名。
 
