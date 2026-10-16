@@ -26,7 +26,7 @@ public sealed class CodexRpc : IAsyncDisposable
     public CodexRpc(Stream output, Stream input, Process? process = null)
     {
         _reader = new(output, Encoding.UTF8); _writer = new(input, new UTF8Encoding(false)) { AutoFlush = true }; _process = process;
-        _reading = ReadAsync();
+        _reading = Task.Run(ReadAsync);
     }
     public static string FindExecutable(string configured)
     {

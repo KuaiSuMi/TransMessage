@@ -55,12 +55,20 @@ public sealed class CliIntegrationTests
         var failure = await InvokeAsync(data, ["run", "--", "cmd", "/c", "exit 17"]); Assert.Equal(17, failure.Exit); Assert.Contains("通知警告", failure.Error);
     }
 
-    [Fact]
-    public async Task PublishedBackgroundIsSingleInstanceAndStopsCleanly()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task PublishedBackgroundIsSingleInstanceAndStopsCleanly(bool remoteEnabled)
     {
         using var data = new TestData();
-        data.Config.Update(c => { c.Codex.Enabled = false; c.Downloads.Enabled = false; c.Update.Check = false; c.Server.Port = TestData.Port(); });
+        data.Config.Update(c =>
+        {
+            c.Codex.Enabled = false; c.Downloads.Enabled = false; c.Update.Check = false; c.Server.Port = TestData.Port();
+            c.Qq.Targets.Add(new() { Id = "test-owner" }); c.RemoteCodex.OwnerId = "test-owner"; c.RemoteCodex.Enabled = remoteEnabled;
+            c.RemoteCodex.Executable = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../TransMessage.GuiTests/bin/Debug/net10.0-windows/TransMessage.GuiTests.exe"));
+        });
         var start = new ProcessStartInfo(Exe) { UseShellExecute = false, CreateNoWindow = true };
+        var pidFile = Path.Combine(data.Paths.Root, "codex.pid"); start.Environment["TM_TEST_CODEX_PID_FILE"] = pidFile;
         foreach (var arg in new[] { "--data-dir", data.Paths.Root, "--background" }) start.ArgumentList.Add(arg);
         using var process = Process.Start(start)!;
         var pipe = new InstancePipe(data.Paths);
@@ -74,9 +82,32 @@ public sealed class CliIntegrationTests
                 Assert.False(process.HasExited); await Task.Delay(150);
             }
             Assert.Contains("API：仅本机", status?.Message ?? "");
+            using var child = remoteEnabled ? Process.GetProcessById(int.Parse(await File.ReadAllTextAsync(pidFile))) : null;
             var second = await InvokeAsync(data, ["--background"]); Assert.Equal(0, second.Exit); Assert.False(process.HasExited);
+            Assert.True((await pipe.TrySendAsync(new("show")))?.Ok);
+            await TestData.UntilAsync(() => { process.Refresh(); return process.MainWindowHandle != IntPtr.Zero; });
             var stopped = await pipe.TrySendAsync(new("stop")); Assert.True(stopped?.Ok);
             await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(15)); Assert.Equal(0, process.ExitCode);
+            Assert.True(child?.HasExited ?? true);
+            using var restarted = Process.Start(start)!;
+            try
+            {
+                PipeReply? ready = null;
+                for (var i = 0; i < 40; i++)
+                {
+                    ready = await pipe.TrySendAsync(new("status"));
+                    if (ready?.Message.Contains("API：仅本机", StringComparison.Ordinal) == true) break;
+                    Assert.False(restarted.HasExited); await Task.Delay(150);
+                }
+                Assert.False(restarted.HasExited); Assert.Contains("API：仅本机", ready?.Message ?? "");
+                using var newChild = remoteEnabled ? Process.GetProcessById(int.Parse(await File.ReadAllTextAsync(pidFile))) : null;
+                Assert.True((await pipe.TrySendAsync(new("show")))?.Ok);
+                await TestData.UntilAsync(() => { restarted.Refresh(); return restarted.MainWindowHandle != IntPtr.Zero; });
+                Assert.True((await pipe.TrySendAsync(new("stop")))?.Ok);
+                await restarted.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(15)); Assert.Equal(0, restarted.ExitCode);
+                Assert.True(newChild?.HasExited ?? true);
+            }
+            finally { if (!restarted.HasExited) { restarted.Kill(true); await restarted.WaitForExitAsync(); } }
         }
         finally { if (!process.HasExited) { process.Kill(true); await process.WaitForExitAsync(); } }
     }

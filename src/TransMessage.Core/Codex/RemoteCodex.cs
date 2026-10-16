@@ -55,7 +55,9 @@ public sealed class RemoteCodex(ConfigStore config, Sanitizer sanitizer,
         {
             _rpc = await ConnectAsync(settings, _stop.Token);
             Status = settings.Mode == "desktop" ? "Desktop 共享队列 · 不接管实时审批" : "托管会话 · 支持远程问答";
-            _events = ListenAsync(_rpc, _stop.Token); _receiving = ReceiveAsync(_stop.Token); _delivering = DeliverAsync(_stop.Token);
+            // These loops must finish even after the GUI dispatcher has stopped.
+            var rpc = _rpc; var token = _stop.Token;
+            _events = Task.Run(() => ListenAsync(rpc, token)); _receiving = Task.Run(() => ReceiveAsync(token)); _delivering = Task.Run(() => DeliverAsync(token));
         }
         catch (Exception e) { Status = AppException.Describe(e); throw; }
     }

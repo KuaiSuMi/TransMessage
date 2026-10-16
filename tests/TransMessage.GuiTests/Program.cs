@@ -14,6 +14,18 @@ public static class Program
     [STAThread]
     public static int Main(string[] args)
     {
+        if (args.FirstOrDefault() == "app-server")
+        {
+            if (Environment.GetEnvironmentVariable("TM_TEST_CODEX_PID_FILE") is { } pidFile)
+                File.WriteAllText(pidFile, Environment.ProcessId.ToString());
+            while (Console.ReadLine() is { } line)
+            {
+                using var message = System.Text.Json.JsonDocument.Parse(line);
+                if (message.RootElement.TryGetProperty("id", out var id))
+                    Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(new { id, result = new { } }));
+            }
+            return 0;
+        }
         var output = Path.GetFullPath(args.Length > 0 ? args[0] : "artifacts/gui"); Directory.CreateDirectory(output);
         var application = new Application();
         application.Resources.MergedDictionaries.Add(new ResourceDictionary { Source = new Uri("/TransMessage;component/Theme.xaml", UriKind.Relative) });

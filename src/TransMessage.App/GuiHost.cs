@@ -35,6 +35,7 @@ internal static class GuiHost
             };
             var menu = new Forms.ContextMenuStrip();
             void Show() => application.Dispatcher.Invoke(() => { window.Show(); if (window.WindowState == WindowState.Minimized) window.WindowState = WindowState.Normal; window.Activate(); });
+            void Exit() { window.Exiting = true; application.Shutdown(); }
             menu.Items.Add("打开 TransMessage", null, (_, _) => Show());
             menu.Items.Add("发送测试通知", null, async (_, _) => await window.ExecuteAsync(async () =>
             {
@@ -45,7 +46,7 @@ internal static class GuiHost
             pause.Click += (_, _) => runtime.Config.Update(c => c.Notifications.Paused = pause.Checked); menu.Items.Add(pause);
             menu.Items.Add("打开日志", null, (_, _) => WindowsIntegration.Open(paths.Logs));
             menu.Items.Add(new Forms.ToolStripSeparator());
-            menu.Items.Add("退出", null, (_, _) => application.Dispatcher.Invoke(application.Shutdown));
+            menu.Items.Add("退出", null, (_, _) => application.Dispatcher.Invoke(Exit));
             tray.ContextMenuStrip = menu; tray.DoubleClick += (_, _) => Show();
             window.Closing += (_, e) =>
             {
@@ -58,7 +59,7 @@ internal static class GuiHost
                 }
             };
             runtime.ShowRequested += Show;
-            runtime.StopRequested += () => application.Dispatcher.BeginInvoke(() => { window.Exiting = true; application.Shutdown(); });
+            runtime.StopRequested += () => application.Dispatcher.BeginInvoke(Exit);
             application.SessionEnding += (_, _) => { window.Exiting = true; stop.Cancel(); };
             application.DispatcherUnhandledException += (_, e) => { window.Feedback(AppException.Describe(e.Exception)); e.Handled = true; };
             application.Startup += async (_, _) =>
