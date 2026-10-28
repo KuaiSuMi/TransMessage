@@ -12,7 +12,10 @@
 
 最终本机 ZIP 内 4 项 CLI 验收通过，覆盖窗口唤起、单实例、退出和重新打开，证据 `artifacts/test-results/published-v030-final.trx`。[标签发布检查](https://github.com/KuaiSuMi/TransMessage/actions/runs/40744098731)通过完整验证、打包和发布程序检查；[v0.3.0](https://github.com/KuaiSuMi/TransMessage/releases/tag/v0.3.0) 已公开 ZIP 与 SHA256SUMS。SDK 已固定 10.0.401，避免 runner 补丁滚动导致隐式依赖与锁文件不一致。现有 Desktop 仍只支持共享队列追加，实时问题和模型设置需要在原窗口处理。真实 QQ 手机引用和图文收发、Windows 11、完整读屏/键鼠验收尚未完成；发布包未签名。
 
+本机软件内更新已实测：实际运行的 0.2.5 从公开 v0.3.0 Release 检查、下载并校验后替换自身，自动重启到 0.3.0。原配置字节未变，旧 exe 备份哈希匹配，窗口再次唤起成功；QQ 已重新连接，Codex 与下载监听正常。更新前本机没有托管会话运行，没有中断用户 Codex Desktop 会话。证据：`artifacts/update-actual-v030.json`、`artifacts/update-actual-v030-status.json`。更新和回滚实现未修改，回滚复用 0.2.3 已验证结果。
+
 ---
+
 ## 0.2.5 验收记录
 
 日期：2026-10-16（Asia/Shanghai）。修复启用 QQ 控制后退出阻塞：Codex RPC 读取和远程消息循环原先捕获界面同步上下文，界面停止后无法完成取消，进程等待清理并持续占用单实例锁。改为在线程池运行这些后台循环，托盘退出与 IPC 停止共用退出入口。
