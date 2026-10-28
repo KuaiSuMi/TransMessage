@@ -10,7 +10,7 @@
 - 原生联调发现 UUIDv7 前 8 位会重复，短编号改成末 12 位；同前缀正确路由、末尾冲突拒绝和完整 UUID 选择均有回归。旧前 8 位指令不再使用，引用索引仍关联完整会话 ID。
 - 保持 Apple-Style，实际 WPF 生成 34 张浅/深色、200% 文字、降低透明度与对比配色样例；新编号复制目标和未连接时新建错误反馈检查通过。证据：`artifacts/gui/`。对比配色为模拟样例，不代表系统高对比模式实机验收。
 
-本机 ZIP、公开发布与软件内更新源的结果在完成后追加。现有 Desktop 仍只支持共享队列追加，实时问题和模型设置需要在原窗口处理。真实 QQ 手机引用和图文收发、Windows 11、完整读屏/键鼠验收尚未完成；发布包未签名。
+最终本机 ZIP 内 4 项 CLI 验收通过，覆盖窗口唤起、单实例、退出和重新打开，证据 `artifacts/test-results/published-v030-final.trx`。[标签发布检查](https://github.com/KuaiSuMi/TransMessage/actions/runs/40744098731)通过完整验证、打包和发布程序检查；[v0.3.0](https://github.com/KuaiSuMi/TransMessage/releases/tag/v0.3.0) 已公开 ZIP 与 SHA256SUMS。SDK 已固定 10.0.401，避免 runner 补丁滚动导致隐式依赖与锁文件不一致。现有 Desktop 仍只支持共享队列追加，实时问题和模型设置需要在原窗口处理。真实 QQ 手机引用和图文收发、Windows 11、完整读屏/键鼠验收尚未完成；发布包未签名。
 
 ---
 ## 0.2.5 验收记录
