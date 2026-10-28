@@ -35,7 +35,7 @@
         "type": "Project",
         "dependencies": {
           "System.CommandLine": "[2.0.12, )",
-          "TransMessage.Core": "[0.1.0, )"
+          "TransMessage.Core": "[0.3.0, )"
         }
       },
       "transmessage.core": {

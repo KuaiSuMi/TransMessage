@@ -41,7 +41,7 @@ public static class Doctor
             }
         }
         results.Add(new("Codex Desktop / VS Code", compatible ? "OK" : "WARN", compatible ? "已识别本地用户会话元数据；完成事件须通过一次真实任务验证。" : "当前 Codex 版本暂无可靠完成事件，未知格式安全跳过。"));
-        results.Add(new("QQ 私聊控制", c.RemoteCodex.Enabled ? "INFO" : "WARN", c.RemoteCodex.Enabled ? $"{c.RemoteCodex.Mode} 模式，已授权 {c.RemoteCodex.Threads.Count} 个会话；Desktop 队列不代表实时接管。" : "未启用；在 QQ 控制页选择主人与会话。"));
+        results.Add(new("QQ 私聊控制", c.RemoteCodex.Enabled ? "INFO" : "WARN", c.RemoteCodex.Enabled ? $"统一连接，{c.RemoteCodex.Threads.Count(t => t.Managed)} 个托管会话；普通会话自动发现，Desktop 共享队列不代表实时接管。" : "未启用；在 QQ 控制页选择绑定的本人并连接。"));
         try { results.Add(new("通知历史", "OK", $"已保存 {app.Dispatcher.History.Read().Count} 条加密记录。")); }
         catch (Exception e) { results.Add(new("通知历史", "FAIL", AppException.Describe(e))); }
         var background = await app.Pipe.TrySendAsync(new("status"), ct);

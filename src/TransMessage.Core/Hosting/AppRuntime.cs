@@ -31,6 +31,7 @@ public sealed class AppRuntime : IAsyncDisposable
     public event Action? ShowRequested;
     public event Action? StopRequested;
     private readonly HttpClient _http;
+    private readonly QqReferenceStore _qqReferences;
     private CancellationTokenSource? _services;
     private readonly List<Task> _tasks = [];
     public AppRuntime(AppPaths paths, INotificationChannel? channel = null)
@@ -42,8 +43,9 @@ public sealed class AppRuntime : IAsyncDisposable
         _http = new HttpClient { Timeout = TimeSpan.FromSeconds(90) };
         Qq = new(_http, () => (Config.Load().Qq.AppId, Secrets.Get("qq") ?? ""), Config.Load().Qq.Sandbox);
         Binding = new(Config);
+        _qqReferences = new(paths);
         Sanitizer = new(() => new[] { Secrets.Get("qq") ?? "", Secrets.Get("api") ?? "" });
-        Dispatcher = new(Config, new(paths), Sanitizer, channel ?? new QqOfficialChannel(Config, Qq), Log);
+        Dispatcher = new(Config, new(paths), Sanitizer, channel ?? new QqOfficialChannel(Config, Qq, RememberReferenceAsync), Log);
         Updater = new(_http, paths);
         Remote = new(Config, Sanitizer, SendPrivateAsync);
     }
@@ -54,9 +56,21 @@ public sealed class AppRuntime : IAsyncDisposable
             return new(false, notification.Id, "failed", "私聊控制授权已撤销。");
         var clean = Sanitizer.Clean(notification); var key = Dispatcher.History.Begin(clean, "控制者私聊");
         DeliveryResult result;
-        try { await Qq.SendTextAsync(new() { Id = owner, Kind = "c2c" }, Security.Sanitizer.QqText(clean), ct, replyId); result = new(true, clean.Id, "sent"); }
+        try
+        {
+            var target = new QqTarget { Id = owner, Kind = "c2c" };
+            var receipt = await Qq.SendTextAsync(target, Security.Sanitizer.QqText(clean), ct, replyId);
+            await RememberReferenceAsync(target, clean, receipt); result = new(true, clean.Id, "sent");
+        }
         catch (Exception e) { result = new(false, clean.Id, e is AppException error && (error.Code.StartsWith("QQ_4", StringComparison.Ordinal) || error.Code == "QQ_NOT_CONFIGURED") ? "failed" : "uncertain", AppException.Describe(e)); }
         Dispatcher.History.Complete(key, result.Status, result.Error); return result;
+    }
+    private Task RememberReferenceAsync(QqTarget target, Notification notification, QqSendReceipt receipt)
+    {
+        if (target.Kind == "c2c" && receipt.ReferenceIndex is { Length: > 0 } index
+            && notification.Metadata.TryGetValue("thread_id", out var thread) && Guid.TryParse(thread, out _))
+            _qqReferences.Save(target.Id, index, thread, notification.Metadata.GetValueOrDefault("question_code"));
+        return Task.CompletedTask;
     }
     public async Task<DeliveryResult> SendAsync(Notification notification, CancellationToken ct = default)
     {

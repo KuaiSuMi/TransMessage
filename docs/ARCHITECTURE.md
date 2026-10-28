@@ -26,10 +26,12 @@ GUI / serve 由每数据目录命名 mutex 限制为一个后台实例。CLI 优
 
 WPF 运行于 STA UI 线程；后台 HTTP、WebSocket 和文件事件异步执行。QQ Gateway 按服务器心跳周期发送，断线以指数退避和抖动重连，支持 resume。Downloads / Codex 由文件事件唤醒，不全盘每秒扫描。GitHub 自动检查缓存 24 小时。
 
-## 0.2.0 历史和控制
+## 历史和控制
 
 Dispatcher 在发送前写入加密历史的 sending 状态，再更新 sent / failed / uncertain；历史跨进程原子写入，保留 30 天和 500 条。传输不确定时沿用不自动重放的原则。
 
 QQ Gateway → 私聊身份与时效校验 → 有界指令队列 → 持久去重 → RemoteCodex → CodexRpc。CodexRpc 通过原生 exe 的标准输入输出交换 JSONL，相关请求有超时和关联 ID。RPC 事件接收与 QQ 通知发送分别运行，网络慢不会阻塞审批确认。
 
-Desktop 模式只读取历史与写官方共享队列。托管模式仅恢复自己创建且仍在白名单的会话，消费实时 turn/item/serverRequest 事件。新建空会话尚未落盘时直接在当前连接启动第一轮，避免错误地恢复不存在的 rollout。普通服务配置刷新保持该连接；连接身份改变时销毁旧 pending request。远程控制没有开放新的 HTTP 端点。
+统一入口按会话能力分流：已有 Desktop 只读取历史与写官方共享队列；实时连接仅恢复本程序自己创建的会话，消费实时 turn/item/serverRequest 事件。新建空会话尚未落盘时直接在当前连接启动第一轮，避免错误地恢复不存在的 rollout。普通服务配置刷新保持该连接；连接身份改变时销毁旧 pending request。远程控制没有开放新的 HTTP 端点。
+
+QQ 引用消息通过 `ref_msg_idx` 查询发送回执 `ext_info.ref_idx` 的持久索引，关联原会话和问题。RemoteMessages 处理目标和草稿；RemoteSessions 处理会话发现、提交与模型设置。每份草稿固定属于控制者、会话和可选问题码，显式提交时将文字与本机图片作为同一组 Codex input 发送。不同会话可同时执行，完成和待输入事件按 thread/turn 关联。

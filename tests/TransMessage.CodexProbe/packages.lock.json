@@ -21,11 +21,6 @@
           "Serilog": "4.2.0"
         }
       },
-      "System.Security.Cryptography.ProtectedData": {
-        "type": "Transitive",
-        "resolved": "10.0.12",
-        "contentHash": "wO0W8VDMeRJZakRySOmemAnrBZMwEFRlbfBtATxUiLf2I3IhSRnCp1Vt157NWptdE4IJ7eftd5n8q9LtaKHFTQ=="
-      },
       "Tomlyn": {
         "type": "Transitive",
         "resolved": "2.10.1",
@@ -36,7 +31,6 @@
         "dependencies": {
           "Serilog": "[4.4.0, )",
           "Serilog.Sinks.File": "[7.0.0, )",
-          "System.Security.Cryptography.ProtectedData": "[10.0.12, )",
           "Tomlyn": "[2.10.1, )"
         }
       }

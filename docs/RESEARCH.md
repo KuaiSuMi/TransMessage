@@ -1,5 +1,12 @@
 # 研究与取舍
 
+## 0.3.0 追加核查（2026-10-29）
+
+- [QQ 私聊事件](https://bot.q.qq.com/wiki/develop/api-v2/autogen/event/c2c_message_create.html)：引用消息类型为 103；`message_scene.ext` 中的 `ref_msg_idx=` 关联原消息，值可能带 `=`，仅按首个等号拆分。新输入只读取顶层正文和附件，不重复执行 `msg_elements` 中的旧内容。
+- [QQ 发送私聊消息](https://bot.q.qq.com/wiki/develop/api-v2/autogen/api/v2_users_user_openid_messages.post.html)：保留回执 `ext_info.ref_idx` 建立引用索引；同一 `msg_id` 的多条回复递增 `msg_seq`，传输重试不换序号。[官方变更记录](https://bot.q.qq.com/wiki/develop/api-v2/changelog.html)已将正式 API 域名调整到 `api.bot.qq.com`。
+- 当前本机原生 Codex 0.164.0-alpha.11.1 的模型目录与输入协议经实际进程核对；图片使用 `localImage`，下一轮用 `model` / `effort`，选项来自 `model/list`。不通过猜测模型名称或套餐权限启用能力。
+- 隔离 CODEX_HOME、本机脚本化 Responses 服务完成真实 Codex 联调：103 引用回答原问题、两会话 `/d` 和 `/draft` 无编号草稿、图文分开发送、两轮同时运行、反序完成。实际请求中的 base64 图片像素、文字、模型和推理设置均核验。QQ 事件和发送回执为夹具，没有真实 QQ 手机验收。证据：`artifacts/native-codex-v030/evidence.json`。
+- 实际新建 UUIDv7 会话出现相同前 8 位，故短编号改为末 12 位，仍拒绝歧义并支持完整 UUID；不把时间前缀当唯一会话编号。
 ## 0.2.0 追加核查（2026-10-15）
 
 - 本机 Codex CLI 为 0.153.4，Desktop 使用的原生程序为 0.162.0-alpha.17.2。以实际 exe 生成的 experimental JSON Schema 核对 `thread/queue/add/list/delete`、`item/tool/requestUserInput`、`serverRequest/resolved` 等字段。

@@ -14,7 +14,7 @@ public sealed class RemoteCodexTests
     private static void Configure(TestData data, bool managed = false) => data.Config.Update(c =>
     {
         c.Qq.AppId = "test-app"; c.Qq.Targets.Add(new() { Id = "owner" }); c.Qq.Targets.Add(new() { Id = "other" });
-        c.RemoteCodex.Enabled = true; c.RemoteCodex.OwnerId = "owner"; c.RemoteCodex.Mode = managed ? "managed" : "desktop";
+        c.RemoteCodex.Enabled = true; c.RemoteCodex.OwnerId = "owner";
         c.RemoteCodex.Threads.Add(new() { Id = CodexTests.ThreadId, Name = "测试任务", Managed = managed });
     });
     private static QqPrivateMessage Message(string text, string sender = "owner", string? id = null) => new(id ?? Guid.NewGuid().ToString(), sender, text, DateTimeOffset.UtcNow);
@@ -28,17 +28,17 @@ public sealed class RemoteCodexTests
     {
         using var data = new TestData(); Configure(data); await using var server = await RpcFixture.CreateAsync();
         var notices = new ConcurrentQueue<Notification>(); await using var remote = Remote(data, server, notices); await remote.ApplySettingsAsync();
-        var valid = Message("继续 12345678 检查测试");
+        var valid = Message("继续 123456789012 检查测试");
         await remote.ProcessAsync(valid with { Sender = "other" });
         await remote.ProcessAsync(valid with { Time = DateTimeOffset.UtcNow.AddMinutes(-6) });
-        await remote.ProcessAsync(Message("继续 87654321 不允许"));
+        await remote.ProcessAsync(Message("继续 876543210987 不允许"));
         await remote.ProcessAsync(valid); await remote.ProcessAsync(valid);
-        await remote.ProcessAsync(Message("状态 12345678"));
+        await remote.ProcessAsync(Message("状态 123456789012"));
         await TestData.UntilAsync(() => notices.Any(n => n.Message.Contains("队列中 0 条", StringComparison.Ordinal)));
         Assert.Single(server.Calls, x => x.GetProperty("method").GetString() == "thread/queue/add");
         Assert.DoesNotContain(server.Calls, x => x.GetProperty("method").GetString() is "thread/resume" or "turn/start");
         data.Config.Update(c => c.RemoteCodex.Enabled = false);
-        await remote.ProcessAsync(Message("继续 12345678 授权已撤销"));
+        await remote.ProcessAsync(Message("继续 123456789012 授权已撤销"));
         Assert.Single(server.Calls, x => x.GetProperty("method").GetString() == "thread/queue/add");
     }
     [Fact]
@@ -48,10 +48,10 @@ public sealed class RemoteCodexTests
         var name = "修复" + new string('名', 60);
         data.Config.Update(c => c.RemoteCodex.Threads.Single().Name = name);
         var notices = new ConcurrentQueue<Notification>(); await using var remote = Remote(data, server, notices); await remote.ApplySettingsAsync();
-        await remote.ProcessAsync(Message("任务")); await remote.ProcessAsync(Message("状态 12345678"));
+        await remote.ProcessAsync(Message("任务")); await remote.ProcessAsync(Message("状态 123456789012"));
         await server.SendAsync(new { method = "turn/completed", @params = new { threadId = CodexTests.ThreadId, turn = new { status = "completed" } } });
         await TestData.UntilAsync(() => notices.Count == 3);
-        Assert.All(notices, n => { Assert.Contains(TaskName.Short(name), n.Message); Assert.DoesNotContain(name, n.Message); });
+        Assert.All(notices, n => { Assert.Contains(TaskName.Short(name), n.Title + n.Message); Assert.DoesNotContain(name, n.Title + n.Message); });
         Assert.Equal(name, data.Config.Load().RemoteCodex.Threads.Single().Name);
     }
     [Fact]
@@ -86,11 +86,11 @@ public sealed class RemoteCodexTests
     {
         using var data = new TestData(); Configure(data, true); await using var server = await RpcFixture.CreateAsync();
         await using var remote = Remote(data, server); await remote.ApplySettingsAsync();
-        await remote.ProcessAsync(Message("继续 12345678 实现功能"));
+        await remote.ProcessAsync(Message("继续 123456789012 实现功能"));
         var resume = Assert.Single(server.Calls, x => x.GetProperty("method").GetString() == "thread/resume");
         Assert.Equal("workspace-write", resume.GetProperty("params").GetProperty("sandbox").GetString());
         Assert.Equal("on-request", resume.GetProperty("params").GetProperty("approvalPolicy").GetString());
-        server.State = "active"; await remote.ProcessAsync(Message("继续 12345678 不应重复启动"));
+        server.State = "active"; await remote.ProcessAsync(Message("继续 123456789012 不应重复启动"));
         Assert.Single(server.Calls, x => x.GetProperty("method").GetString() == "turn/start");
         Assert.DoesNotContain(server.Calls, x => x.GetProperty("method").GetString() == "thread/queue/add");
     }
@@ -167,13 +167,13 @@ public sealed class RemoteCodexTests
         var notices = new ConcurrentQueue<Notification>();
         await using var server = await RpcFixture.CreateAsync(); await using var remote = Remote(data, server, notices); await remote.ApplySettingsAsync();
         var thread = await remote.CreateManagedAsync(data.Paths.Root, "新会话");
-        Assert.Equal("空闲", (await remote.TasksAsync()).Single().State);
+        Assert.Equal("托管 · 空闲", (await remote.TasksAsync()).Single().State);
         await remote.ContinueAsync(thread.Id, "第一次");
         Assert.DoesNotContain(server.Calls, x => x.GetProperty("method").GetString() is "thread/read" or "thread/resume");
         await Assert.ThrowsAsync<AppException>(() => remote.ContinueAsync(thread.Id, "忙碌时重复"));
         await server.SendAsync(new { method = "turn/completed", @params = new { threadId = thread.Id, turn = new { status = "completed" } } });
         await TestData.UntilAsync(() => notices.Any(n => n.Title.Contains("本轮结束", StringComparison.Ordinal)));
-        Assert.Equal("空闲", (await remote.TasksAsync()).Single().State);
+        Assert.Equal("托管 · 空闲", (await remote.TasksAsync()).Single().State);
         await remote.ContinueAsync(thread.Id, "第二次"); Assert.Equal(2, server.Calls.Count(x => x.GetProperty("method").GetString() == "turn/start"));
     }
     [Fact]
@@ -240,6 +240,7 @@ internal sealed class RpcFixture : IAsyncDisposable
                     Calls.Enqueue(message.Clone());
                     object result = method.GetString() is "thread/read" or "thread/resume" or "thread/start"
                         ? new { thread = new { id = CodexTests.ThreadId, name = "测试任务", cwd = "C:\\Code", status = new { type = State } } }
+                        : method.GetString() == "thread/list" ? new { data = new[] { new { id = CodexTests.ThreadId, name = "测试任务", cwd = "C:\\Code", source = "vscode", status = new { type = State } } }, nextCursor = (string?)null }
                         : method.GetString() == "thread/queue/list" ? new { data = Array.Empty<object>() } : new { };
                     await SendAsync(new { id, result });
                 }

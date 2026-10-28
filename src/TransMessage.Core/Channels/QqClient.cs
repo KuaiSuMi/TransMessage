@@ -8,21 +8,24 @@ using TransMessage.Core.Security;
 
 namespace TransMessage.Core.Channels;
 
+public sealed record QqSendReceipt(string Id, DateTimeOffset? Timestamp, string? ReferenceIndex);
+
 public sealed class QqClient(HttpClient http, Func<(string AppId, string Secret)> credentials, bool sandbox = false,
     Uri? apiBase = null, Uri? tokenBase = null)
 {
-    private Uri _api = apiBase ?? new(sandbox ? "https://sandbox.api.sgroup.qq.com/" : "https://api.sgroup.qq.com/");
+    private Uri _api = apiBase ?? new(sandbox ? "https://sandbox.api.sgroup.qq.com/" : "https://api.bot.qq.com/");
     private readonly Uri _tokenBase = tokenBase ?? new("https://bots.qq.com/");
     private readonly SemaphoreSlim _tokenGate = new(1, 1);
     private string? _token;
     private string? _appId;
     private DateTimeOffset _refreshAt;
+    private readonly Dictionary<(string Kind, string Target, string Reply), (int Sequence, DateTimeOffset Time)> _replySequences = [];
     public string Status { get; private set; } = "未认证";
 
     public void InvalidateToken() => _refreshAt = DateTimeOffset.MinValue;
     public void SetSandbox(bool enabled)
     {
-        if (apiBase is null) _api = new(enabled ? "https://sandbox.api.sgroup.qq.com/" : "https://api.sgroup.qq.com/");
+        if (apiBase is null) _api = new(enabled ? "https://sandbox.api.sgroup.qq.com/" : "https://api.bot.qq.com/");
     }
     public async Task<string> GetTokenAsync(CancellationToken ct = default)
     {
@@ -61,18 +64,32 @@ public sealed class QqClient(HttpClient http, Func<(string AppId, string Secret)
         return uri;
     }
 
-    public async Task SendTextAsync(QqTarget target, string text, CancellationToken ct, string? replyId = null)
+    public async Task<QqSendReceipt> SendTextAsync(QqTarget target, string text, CancellationToken ct, string? replyId = null)
     {
         var scope = target.Kind == "c2c" ? "users" : "groups";
         var body = new Dictionary<string, object> { ["content"] = text, ["msg_type"] = 0 };
         if (replyId is not null)
         {
             body["msg_id"] = replyId;
-            body["msg_seq"] = 1;
+            lock (_replySequences)
+            {
+                var cutoff = DateTimeOffset.UtcNow.AddHours(-2);
+                foreach (var key in _replySequences.Where(x => x.Value.Time < cutoff).Select(x => x.Key).ToArray()) _replySequences.Remove(key);
+                var keyForReply = (target.Kind, target.Id, replyId);
+                var sequence = _replySequences.GetValueOrDefault(keyForReply).Sequence + 1;
+                _replySequences[keyForReply] = (sequence, DateTimeOffset.UtcNow);
+                if (_replySequences.Count > 4096) _replySequences.Remove(_replySequences.MinBy(x => x.Value.Time).Key);
+                body["msg_seq"] = sequence;
+            }
         }
         using var result = await RequestAsync(HttpMethod.Post, $"v2/{scope}/{Uri.EscapeDataString(target.Id)}/messages", body, ct);
-        if (!result.RootElement.TryGetProperty("id", out _) && !result.RootElement.TryGetProperty("message_id", out _))
+        var root = result.RootElement;
+        if (!root.TryGetProperty("id", out var id) || id.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(id.GetString()))
             throw new AppException("QQ_SEND_SCHEMA", "QQ 发送响应缺少消息标识；结果不确定，未自动重发。");
+        var timestamp = root.TryGetProperty("timestamp", out var stamp) && stamp.ValueKind == JsonValueKind.String && stamp.TryGetDateTimeOffset(out var time) ? (DateTimeOffset?)time : null;
+        var reference = root.TryGetProperty("ext_info", out var extra) && extra.ValueKind == JsonValueKind.Object
+            && extra.TryGetProperty("ref_idx", out var index) && index.ValueKind == JsonValueKind.String ? index.GetString() : null;
+        return new(id.GetString()!, timestamp, reference is { Length: > 0 and <= 2048 } ? reference : null);
     }
 
     private async Task<JsonDocument> RequestAsync(HttpMethod method, string path, object? body, CancellationToken ct)
@@ -144,7 +161,8 @@ public sealed class QqClient(HttpClient http, Func<(string AppId, string Secret)
     });
 }
 
-public sealed class QqOfficialChannel(ConfigStore config, QqClient qq) : INotificationChannel
+public sealed class QqOfficialChannel(ConfigStore config, QqClient qq,
+    Func<QqTarget, Notification, QqSendReceipt, Task>? receipt = null) : INotificationChannel
 {
     public async Task SendAsync(Notification notification, CancellationToken cancellationToken)
     {
@@ -153,7 +171,11 @@ public sealed class QqOfficialChannel(ConfigStore config, QqClient qq) : INotifi
         List<string> errors = [];
         foreach (var target in targets)
         {
-            try { await qq.SendTextAsync(target, Sanitizer.QqText(notification), cancellationToken); }
+            try
+            {
+                var sent = await qq.SendTextAsync(target, Sanitizer.QqText(notification), cancellationToken);
+                if (receipt is not null) await receipt(target, notification, sent);
+            }
             catch (Exception e) { errors.Add(AppException.Describe(e)); }
         }
         if (errors.Count > 0) throw new AppException("QQ_PARTIAL", $"{errors.Count}/{targets.Length} 个目标发送失败。{errors[0]}");

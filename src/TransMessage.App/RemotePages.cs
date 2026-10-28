@@ -6,7 +6,6 @@ using TransMessage.Core;
 using TransMessage.Core.Codex;
 using TransMessage.Core.Configuration;
 using TransMessage.Core.Notifications;
-using TransMessage.Core.Security;
 
 namespace TransMessage.App;
 
@@ -57,57 +56,60 @@ public partial class MainWindow
     }
     private void RemoteControl()
     {
-        Heading("在 QQ，接着做", "只允许你选定的私聊控制者与会话。群消息不会启动任务，也不能回答问题。");
+        Heading("在 QQ，接着做", "引用通知即可回复，也可直接带上会话编号。图片与文字可以分开发送，再一起提交。");
         var c = _app.Config.Load(); var settings = c.RemoteCodex;
-        var connection = Card("控制连接", "Desktop 共享队列用于查询和排队续写；托管会话由 TransMessage 运行，支持实时问题与回答。切换连接或停用控制会结束正在运行的托管连接。");
+        var connection = Card("控制连接", "只接受你选定的 QQ 私聊控制者。会话无需逐个授权，群消息不会启动任务。");
         var enabled = Check(connection, "启用 QQ 私聊控制", settings.Enabled);
         connection.Children.Add(Text("谁可以控制", false));
         var owners = c.Qq.Targets.Where(t => t.Kind == "c2c" && t.Enabled).ToArray();
         var owner = new ComboBox { ItemsSource = owners, SelectedItem = owners.FirstOrDefault(t => t.Id == settings.OwnerId) };
         AutomationProperties.SetName(owner, "私聊控制者"); connection.Children.Add(owner);
         if (owners.Length == 0) Action(Actions(connection), "先绑定手机私聊", () => Go("qq"));
-        connection.Children.Add(Text("连接方式", false));
-        var mode = new ComboBox { ItemsSource = new[] { "现有 Desktop · 共享消息队列", "TransMessage 托管 · 实时问答" }, SelectedIndex = settings.Mode == "managed" ? 1 : 0 };
-        AutomationProperties.SetName(mode, "Codex 连接方式"); connection.Children.Add(mode);
         var executable = Field(connection, "Codex 程序（留空自动发现原生 exe）", settings.Executable);
         Action(Actions(connection), "选择 codex.exe…", () => { var dialog = new OpenFileDialog { Filter = "Codex 可执行程序|*.exe", CheckFileExists = true }; if (dialog.ShowDialog(this) == true) executable.Text = dialog.FileName; });
         var buttons = Actions(connection);
         Button(buttons, "保存并连接", async () =>
         {
-            var nextMode = mode.SelectedIndex == 1 ? "managed" : "desktop";
-            if (settings.Enabled && settings.Mode == "managed" && (nextMode != settings.Mode || enabled.IsChecked != true || executable.Text.Trim() != settings.Executable || owner.SelectedItem is QqTarget nextOwner && nextOwner.Id != settings.OwnerId)
+            var nextOwner = (owner.SelectedItem as QqTarget)?.Id ?? "";
+            if (settings.Enabled && settings.Threads.Any(t => t.Managed) && (enabled.IsChecked != true || executable.Text.Trim() != settings.Executable || nextOwner != settings.OwnerId)
                 && MessageBox.Show(this, "更改连接会结束当前托管进程，未完成工作可能中断。", "更改控制连接", MessageBoxButton.OKCancel, MessageBoxImage.Warning, MessageBoxResult.Cancel) != MessageBoxResult.OK) return;
-            _app.Config.Update(cfg => { cfg.RemoteCodex.Enabled = enabled.IsChecked == true; cfg.RemoteCodex.OwnerId = (owner.SelectedItem as QqTarget)?.Id ?? ""; cfg.RemoteCodex.Mode = nextMode; cfg.RemoteCodex.Executable = executable.Text.Trim(); });
+            _app.Config.Update(cfg => { cfg.RemoteCodex.Enabled = enabled.IsChecked == true; cfg.RemoteCodex.OwnerId = nextOwner; cfg.RemoteCodex.Executable = executable.Text.Trim(); });
             await _app.Remote.ApplySettingsAsync(); Feedback(_app.Remote.Status); ReloadPage();
         }, true);
         Button(buttons, "检测现有 Desktop", async () => Feedback(await _app.Remote.ProbeDesktopAsync()));
         State(connection, "remote", "当前连接"); State(connection, "questions", "等待回答");
 
-        var threads = Card("允许访问的会话", "只有这里列出的会话能够从 QQ 查询或继续。编号固定来自会话 ID，避免不同项目串话。");
-        foreach (var thread in settings.Threads.Where(t => t.Managed == (settings.Mode == "managed")))
+        var threads = Card("你的会话", "现有 Desktop 与实时问答会话放在一起。共享队列中的消息仍需 Desktop 处理，不能据此确认已经执行。");
+        var threadList = new StackPanel(); threads.Children.Add(threadList);
+        void ShowThreads(IReadOnlyList<CodexTaskInfo> rows)
         {
-            threads.Children.Add(Text($"#{thread.Id[..8]} · {thread.Name}", false));
-            Action(Actions(threads), "撤销此会话访问", () => { _app.Config.Update(cfg => cfg.RemoteCodex.Threads.RemoveAll(t => t.Id == thread.Id)); ReloadPage(); });
-        }
-        if (settings.Mode == "desktop")
-        {
-            threads.Children.Add(Text("追加消息会写入官方共享队列，由 Desktop 消费。无法据此确认它已开始执行，也不能把排队消息当作原窗口的审批回答。"));
-            var candidates = new ComboBox(); AutomationProperties.SetName(candidates, "本机 Codex 会话"); threads.Children.Add(candidates);
-            var actions = Actions(threads);
-            Button(actions, "查找最近会话", async () => { candidates.ItemsSource = await _app.Remote.DiscoverAsync(); Feedback("选择会话后，授权 QQ 访问。"); });
-            Action(actions, "授权选中会话", () =>
+            threadList.Children.Clear();
+            var managedIds = _app.Config.Load().RemoteCodex.Threads.Where(t => t.Managed).Select(t => t.Id).ToHashSet();
+            if (rows.Count == 0) threadList.Children.Add(Text("连接后点击“刷新会话”，查看本机的普通 Codex 会话。"));
+            foreach (var thread in rows)
             {
-                if (candidates.SelectedItem is not CodexTaskInfo selected) throw new AppException("CONTROL_THREAD", "先选择一个会话。");
-                _app.Config.Update(cfg => { if (cfg.RemoteCodex.Threads.All(t => t.Id != selected.Id)) cfg.RemoteCodex.Threads.Add(new() { Id = selected.Id, Name = Sanitizer.Truncate(selected.Name, 100) }); }); ReloadPage();
-            });
+                var row = new StackPanel { Margin = new(0, 8, 0, 12) };
+                var managed = managedIds.Contains(thread.Id);
+                row.Children.Add(Text($"#{thread.Id[^12..]} · {TaskName.Short(thread.Name)}", false));
+                row.Children.Add(Text($"{(managed ? "实时问答" : "共享队列")} · {thread.State}"));
+                if (thread.Directory.Length > 0) row.Children.Add(Text(thread.Directory));
+                var copy = Action(Actions(row), "复制会话编号", () => { Clipboard.SetText("#" + thread.Id[^12..]); Feedback("已复制会话编号，可在 QQ 消息开头使用。"); });
+                AutomationProperties.SetName(copy, "复制会话编号 #" + thread.Id[^12..]);
+                threadList.Children.Add(row);
+            }
         }
-        else
-        {
-            var name = Field(threads, "新会话名称", "我的远程任务"); var directory = Field(threads, "项目目录", "");
-            var actions = Actions(threads);
-            Action(actions, "选择项目目录…", () => { var dialog = new OpenFolderDialog(); if (dialog.ShowDialog(this) == true) directory.Text = dialog.FolderName; });
-            Button(actions, "创建可控会话", async () => { var thread = await _app.Remote.CreateManagedAsync(directory.Text, name.Text); Feedback($"会话 #{thread.Id[..8]} 已创建。在 QQ 发送“继续 {thread.Id[..8]} 你的要求”。"); ReloadPage(); });
-        }
+        ShowThreads(settings.Threads.Where(t => t.Managed).Select(t => new CodexTaskInfo(t.Id, t.Name, "", "连接后刷新状态")).ToArray());
+        Button(Actions(threads), "刷新会话", async () => { ShowThreads(await _app.Remote.TasksAsync()); Feedback("会话已刷新，可直接引用通知或使用编号回复。"); });
+
+        var draft = Card("图文一起发", "先引用一条会话通知，再发送 /d（也支持 /draft）。随后分开发送图片和文字，最后用 /s 一起提交；/c 取消草稿。");
+        draft.Children.Add(Text("不引用消息时，发送 /d #会话编号。草稿固定属于该会话，不会随其他会话的通知切换。"));
+        draft.Children.Add(Text("实时问答会话支持 /model 和 /reasoning，设置从下一轮生效。现有 Desktop 的模型设置与实时问题仍需在原窗口处理。"));
+
+        var create = Card("新建实时问答会话", "需要在 QQ 回答问题或调整模型时，由 TransMessage 创建并运行会话。退出或停用控制会结束托管进程。");
+        var name = Field(create, "会话名称", "我的远程任务"); var directory = Field(create, "项目目录", "");
+        var createActions = Actions(create);
+        Action(createActions, "选择项目目录…", () => { var dialog = new OpenFolderDialog(); if (dialog.ShowDialog(this) == true) directory.Text = dialog.FolderName; });
+        Button(createActions, "创建会话", async () => { var thread = await _app.Remote.CreateManagedAsync(directory.Text, name.Text); Feedback($"会话 #{thread.Id[^12..]} 已创建。在 QQ 发送“#{thread.Id[^12..]} 你的要求”。"); ReloadPage(); });
         var pending = Card("等待你的回答", "问题码只对当前会话、当前请求有效。连接断开或问题已结束后，旧回答不会用于新的请求。有效期 15 分钟。");
         Action(Actions(pending), "刷新待回答问题", ReloadPage);
         foreach (var request in _app.Remote.Pending)
@@ -130,7 +132,7 @@ public partial class MainWindow
                 Button(actions, "拒绝本次", async () => { await _app.Remote.AnswerAsync(request.Code, "decline", true); ReloadPage(); });
             }
         }
-        if (_app.Remote.Pending.Count == 0) pending.Children.Add(Text(settings.Mode == "desktop" ? "此模式无法获取现有 Desktop 的待输入状态。需要手机提醒与回答时，请使用托管会话。" : "当前没有待回答问题。"));
+        if (_app.Remote.Pending.Count == 0) pending.Children.Add(Text("当前没有待回答问题。共享队列会话无法读取现有 Desktop 窗口里的实时问题。"));
         var commands = Card("在 QQ 中这样说"); Code(commands, RemoteCodex.Help);
     }
 }

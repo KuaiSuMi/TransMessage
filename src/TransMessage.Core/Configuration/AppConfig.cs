@@ -22,10 +22,10 @@ public sealed class AppConfig
         if (Downloads.Directories.Any(p => !Path.IsPathFullyQualified(p))) throw new AppException("CONFIG_PATH", "监控目录必须是绝对路径。");
         if (Ui.Theme is not ("system" or "light" or "dark")) throw new AppException("CONFIG_THEME", "界面主题无效。");
         if (Ui.TextScale is < 1 or > 2) throw new AppException("CONFIG_SCALE", "文字缩放必须介于 100%–200%。");
-        if (RemoteCodex.Mode is not ("desktop" or "managed")) throw new AppException("CONTROL_MODE", "Codex 连接方式无效。");
         if (RemoteCodex.Executable.Length > 0 && (!Path.IsPathFullyQualified(RemoteCodex.Executable) || !RemoteCodex.Executable.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)))
             throw new AppException("CONTROL_EXE", "请选择 Codex 原生 exe 的完整路径。");
-        if (RemoteCodex.Threads.Count > 50 || RemoteCodex.Threads.Any(t => !Guid.TryParse(t.Id, out _) || string.IsNullOrWhiteSpace(t.Name) || t.Name.Length > 100)
+        if (RemoteCodex.Threads.Count > 50 || RemoteCodex.Threads.Any(t => !Guid.TryParse(t.Id, out _) || string.IsNullOrWhiteSpace(t.Name) || t.Name.Length > 100
+            || t.Model.Length > 200 || t.Effort.Length > 50 || t.Model.Any(char.IsWhiteSpace) || t.Effort.Any(char.IsWhiteSpace))
             || RemoteCodex.Threads.Select(t => t.Id).Distinct().Count() != RemoteCodex.Threads.Count)
             throw new AppException("CONTROL_THREADS", "可控会话配置无效，最多允许 50 个会话。");
         if (RemoteCodex.Enabled && !Qq.Targets.Any(t => t.Kind == "c2c" && t.Id == RemoteCodex.OwnerId && t.Enabled))
@@ -91,7 +91,6 @@ public sealed class RemoteCodexSettings
     public bool Enabled { get; set; }
     public string OwnerId { get; set; } = "";
     public string Executable { get; set; } = "";
-    public string Mode { get; set; } = "desktop";
     public List<ControlledThread> Threads { get; set; } = [];
 }
 public sealed class ControlledThread
@@ -99,4 +98,6 @@ public sealed class ControlledThread
     public string Id { get; set; } = "";
     public string Name { get; set; } = "";
     public bool Managed { get; set; }
+    public string Model { get; set; } = "";
+    public string Effort { get; set; } = "";
 }
