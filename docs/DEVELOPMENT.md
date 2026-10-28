@@ -1,6 +1,6 @@
 # 开发与发布
 
-开发：Windows x64 + .NET SDK 10.0.401。终端用户不需 SDK。`global.json` 锁定 feature band，`packages.lock.json` 锁定 NuGet。
+开发：Windows x64 + .NET SDK 10.0.401。终端用户不需 SDK。`global.json` 固定精确 SDK，避免 runner 补丁升级改变隐式依赖；`packages.lock.json` 锁定 NuGet。
 
 ```powershell
 dotnet restore --locked-mode
