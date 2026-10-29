@@ -80,7 +80,7 @@ public sealed partial class RemoteCodex
         }
         if (route.Command == "/full")
         {
-            var parts = ReplyContent.Split(sanitizer.Redact(reply.Text, trim: false)); var pages = (parts.Count + 3) / 4;
+            var parts = ReplyContent.Split(ReplyContent.ExpandReferences(sanitizer.Redact(reply.Text, trim: false))); var pages = (parts.Count + 3) / 4;
             if (page > pages) throw new AppException("CONTROL_RESULT_PAGE", $"全文共 {pages} 页，请发送 /full 1 至 /full {pages}。");
             var start = (page - 1) * 4; var end = Math.Min(start + 4, parts.Count);
             for (var i = start; i < end; i++)

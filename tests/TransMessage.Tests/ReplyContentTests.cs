@@ -7,6 +7,40 @@ namespace TransMessage.Tests;
 public sealed class ReplyContentTests
 {
     [Theory]
+    [InlineData("[下载 **报告 `a]b`** 😀][r]", "[下载 **报告 `a]b`** 😀]")]
+    [InlineData("[r][]", "[r]")]
+    [InlineData("[r]", "[r]")]
+    [InlineData("![图😀][r]", "![图😀]")]
+    [InlineData("[][r]", "[]")]
+    [InlineData(@"[转义 \[标签\]][r]", @"[转义 \[标签\]]")]
+    public void ExpandReferencesKeepsOriginalLabelsUrlsAndTitles(string reference, string label)
+    {
+        const string destination = "<https://example.com/a_(b)?q=1&n=2#片段> '原始 标题'";
+        var text = "前文😀\r\n" + reference + "\r\n后文\r\n\r\n[r]: " + destination;
+        Assert.Equal("前文😀\r\n" + label + "(" + destination + ")\r\n后文\r\n\r\n", ReplyContent.ExpandReferences(text));
+    }
+
+    [Fact]
+    public void ExpandReferencesLeavesOrdinaryTextAndCodeUntouched()
+    {
+        const string text = "普通文字\r\n`[r]`\r\n\r\n```md\r\n[报告][r]\r\n[r]: file:///D:/fake.txt\r\n```\r\n\r\n[普通](https://example.com/a?q=1#top)\r\n[missing]\r\n\r\n[r]: https://example.com/real";
+        Assert.Equal(text, ReplyContent.ExpandReferences(text));
+    }
+
+    [Fact]
+    public void ExpandedReferencesKeepTheirDestinationsWhenDefinitionsWereBeyondTheSplitBoundary()
+    {
+        const string link = "[发布 `报告😀`](https://example.com/release?q=1&n=2#top)";
+        var text = "[发布 `报告😀`][r]\n\n" + new string('x', 2590) + "\n\n[r]: https://example.com/release?q=1&n=2#top";
+        var expanded = ReplyContent.ExpandReferences(text);
+        var parts = ReplyContent.Split(expanded);
+        Assert.True(parts.Count > 1);
+        Assert.Contains(link, parts[0]); Assert.DoesNotContain("[r]", expanded);
+        Assert.Equal(expanded, string.Concat(parts));
+        Assert.All(parts, part => Assert.InRange(Encoding.UTF8.GetByteCount(part), 1, 2600));
+    }
+
+    [Theory]
     [InlineData(4)]
     [InlineData(7)]
     [InlineData(31)]
@@ -28,6 +62,42 @@ public sealed class ReplyContentTests
         Assert.Empty(ReplyContent.Split(""));
         Assert.Equal(new[] { "😀", "😀", "abc", "文" }, ReplyContent.Split("😀😀abc文", 4));
         Assert.Throws<ArgumentOutOfRangeException>(() => ReplyContent.Split("text", 3));
+    }
+
+    [Theory]
+    [InlineData("[下载 `报告😀`](https://example.com/report_(1).pdf \"最终 报告\")")]
+    [InlineData("https://example.com/files/report.zip#a1b2c3d4e5f6")]
+    [InlineData("<https://example.com/files/report.zip#a1b2c3d4e5f6>")]
+    [InlineData("`#a1b2c3d4e5f6 请处理😀`")]
+    [InlineData("[本地文件](<D:/文档/报告 (1).pdf> \"带 空格 标题\")")]
+    public void SplitKeepsShortMarkdownTokensWholeAtTheDefaultByteBoundary(string token)
+    {
+        const int limit = 2600;
+        var text = "前文😀\r\n" + new string('x', limit - 15) + " " + token + "\r\n尾声😀";
+        var parts = ReplyContent.Split(text);
+        var utf8 = new UTF8Encoding(false, true);
+        Assert.True(parts.Count > 1);
+        Assert.Equal(text, string.Concat(parts));
+        Assert.All(parts, part => Assert.InRange(utf8.GetByteCount(part), 1, limit));
+        Assert.Single(parts, part => part.Contains(token, StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData("link")]
+    [InlineData("url")]
+    [InlineData("code")]
+    public void SplitMakesProgressThroughOversizedTokensAndPreservesFollowingShortLinks(string kind)
+    {
+        const int limit = 64;
+        var url = "https://example.com/" + new string('a', 150) + "#a1b2c3d4e5f6";
+        var token = kind switch { "link" => $"[中文😀]({url} \"有 空格\")", "code" => "`" + string.Concat(Enumerable.Repeat("中文😀", 30)) + "`", _ => url };
+        const string next = "[下一份](https://example.com/next)";
+        var text = "开头😀 " + token + "\r\n" + new string('x', 50) + " " + next + "\r\n完成😀";
+        var parts = ReplyContent.Split(text, limit);
+        var utf8 = new UTF8Encoding(false, true);
+        Assert.Equal(text, string.Concat(parts));
+        Assert.All(parts, part => Assert.InRange(utf8.GetByteCount(part), 1, limit));
+        Assert.Single(parts, part => part.Contains(next, StringComparison.Ordinal));
     }
 
     [Fact]

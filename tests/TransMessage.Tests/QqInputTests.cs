@@ -139,6 +139,29 @@ public sealed class QqInputTests
         Assert.Equal("broken", File.ReadAllText(file));
     }
 
+    [Theory]
+    [InlineData(true, true)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public async Task FileShortcutRequiresEnabledOwnerControlAndCompletedTurn(bool enabled, bool hasTurn)
+    {
+        using var data = new TestData();
+        data.Config.Update(c => { c.Qq.Targets.Add(new() { Id = "owner" }); c.RemoteCodex.OwnerId = "owner"; c.RemoteCodex.Enabled = enabled; });
+        string? markdown = null;
+        using var http = new HttpClient(new ScriptedHttp(async (request, _, ct) =>
+        {
+            if (request.RequestUri!.AbsolutePath.EndsWith("getAppAccessToken", StringComparison.Ordinal))
+                return ScriptedHttp.Json("{\"access_token\":\"token\",\"expires_in\":7200}");
+            using var body = JsonDocument.Parse(await request.Content!.ReadAsStringAsync(ct));
+            markdown = body.RootElement.GetProperty("markdown").GetProperty("content").GetString();
+            return ScriptedHttp.Json("{\"id\":\"sent\"}");
+        }));
+        var notice = new Notification { Message = "会话 #abcdef123456\n[附件](C:/report.pdf)", Metadata = new() { ["thread_id"] = CodexTests.ThreadId } };
+        if (hasTurn) notice.Metadata["turn_id"] = "completed-turn";
+        await new QqOfficialChannel(data.Config, new(http, () => ("app", "secret"))).SendAsync(notice, CancellationToken.None);
+        Assert.Equal(enabled && hasTurn, markdown!.Contains("text=\"%2Ffile\"", StringComparison.Ordinal));
+    }
+
     [Fact]
     public void ReferencesExpireAfter30DaysAndStayBounded()
     {

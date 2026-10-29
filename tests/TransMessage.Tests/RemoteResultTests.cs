@@ -32,6 +32,20 @@ public sealed class RemoteResultTests
     }
 
     [Fact]
+    public async Task FullExpandsReferenceLinksBeforeSeparatingTheirDefinitionsIntoAnotherPart()
+    {
+        await using var h = await Harness.CreateAsync();
+        h.Text = "[发布 `报告😀`][r] [附件][f]\n\n" + new string('x', 2590)
+            + "\n\n[r]: https://example.com/release?q=1&n=2#top\n[f]: <D:/文档/报告 (1).txt>";
+        await h.PostAsync("/full", expected: 2);
+        var first = h.Sent.First().Notice;
+        Assert.Contains("[发布 `报告😀`](https://example.com/release?q=1&n=2#top)", first.Message);
+        Assert.Contains("[附件](<D:/文档/报告 (1).txt>)", first.Message);
+        Assert.Equal("old-turn", first.Metadata["turn_id"]);
+        Assert.DoesNotContain(h.Sent, s => s.Notice.Message.Contains("[r]", StringComparison.Ordinal) || s.Notice.Message.Contains("[f]", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task LongFullIsCompleteAcrossUserRequestedPagesWithoutExceedingFourMessages()
     {
         await using var h = await Harness.CreateAsync();

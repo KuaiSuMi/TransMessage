@@ -1,9 +1,7 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
-using System.Text;
 using System.Text.Json;
-using System.Text.RegularExpressions;
 using TransMessage.Core.Configuration;
 using TransMessage.Core.Notifications;
 using TransMessage.Core.Security;
@@ -22,7 +20,6 @@ public sealed partial class QqClient(HttpClient http, Func<(string AppId, string
     private string? _appId;
     private DateTimeOffset _refreshAt;
     private readonly Dictionary<(string Kind, string Target, string Reply), (int Sequence, DateTimeOffset Time)> _replySequences = [];
-    private static readonly Regex SessionNumber = new(@"#[0-9a-fA-F]{12}(?![0-9a-zA-Z_-])", RegexOptions.Compiled | RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(150));
     public string Status { get; private set; } = "未认证";
 
     public void InvalidateToken() => _refreshAt = DateTimeOffset.MinValue;
@@ -67,12 +64,12 @@ public sealed partial class QqClient(HttpClient http, Func<(string AppId, string
         return uri;
     }
 
-    public async Task<QqSendReceipt> SendTextAsync(QqTarget target, string text, CancellationToken ct, string? replyId = null)
+    public async Task<QqSendReceipt> SendTextAsync(QqTarget target, string text, CancellationToken ct, string? replyId = null, bool linkFiles = false)
     {
         var scope = target.Kind == "c2c" ? "users" : "groups";
-        var markdown = InteractiveText(text);
-        var body = markdown is null ? new Dictionary<string, object> { ["content"] = text, ["msg_type"] = 0 }
-            : new Dictionary<string, object> { ["markdown"] = new { content = markdown }, ["msg_type"] = 2 };
+        var formatted = QqMarkdown.Format(text, linkFiles);
+        var body = formatted.IsMarkdown ? new Dictionary<string, object> { ["markdown"] = new { content = formatted.Content }, ["msg_type"] = 2 }
+            : new Dictionary<string, object> { ["content"] = formatted.Content, ["msg_type"] = 0 };
         AddReply(body, target, replyId);
         using var result = await RequestAsync(HttpMethod.Post, $"v2/{scope}/{Uri.EscapeDataString(target.Id)}/messages", body, ct);
         return ReadReceipt(result.RootElement);
@@ -111,41 +108,6 @@ public sealed partial class QqClient(HttpClient http, Func<(string AppId, string
         var reference = root.TryGetProperty("ext_info", out var extra) && extra.ValueKind == JsonValueKind.Object
             && extra.TryGetProperty("ref_idx", out var index) && index.ValueKind == JsonValueKind.String ? index.GetString() : null;
         return new(id.GetString()!, timestamp, reference is { Length: > 0 and <= 2048 } ? reference : null);
-    }
-
-    private static string? InteractiveText(string text)
-    {
-        var matches = SessionNumber.Matches(text);
-        if (matches.Count == 0) return null;
-        var result = new StringBuilder(); var position = 0;
-        foreach (Match match in matches)
-        {
-            AppendLiteral(result, text.AsSpan(position, match.Index - position));
-            result.Append("<qqbot-cmd-input text=\"").Append(Uri.EscapeDataString(match.Value + " "))
-                .Append("\" show=\"").Append(Uri.EscapeDataString(match.Value)).Append("\" reference=\"false\" />");
-            position = match.Index + match.Length;
-        }
-        AppendLiteral(result, text.AsSpan(position));
-        return result.ToString();
-
-        static void AppendLiteral(StringBuilder result, ReadOnlySpan<char> value)
-        {
-            // Task output stays literal; only the session numbers above create interactive tags.
-            foreach (var c in value)
-            {
-                switch (c)
-                {
-                    case '&': result.Append("&amp;"); break;
-                    case '<': result.Append("&lt;"); break;
-                    case '>': result.Append("&gt;"); break;
-                    case '\r': break;
-                    case '\n': result.Append("\n\n"); break;
-                    case '\\' or '`' or '*' or '_' or '{' or '}' or '[' or ']' or '(' or ')' or '#' or '+' or '-' or '.' or '!' or '|' or '~':
-                        result.Append('\\').Append(c); break;
-                    default: result.Append(c); break;
-                }
-            }
-        }
     }
 
     private async Task<JsonDocument> RequestAsync(HttpMethod method, string path, object? body, CancellationToken ct, int timeoutSeconds = 15)
@@ -222,14 +184,16 @@ public sealed class QqOfficialChannel(ConfigStore config, QqClient qq,
 {
     public async Task SendAsync(Notification notification, CancellationToken cancellationToken)
     {
-        var targets = config.Load().Qq.Targets.Where(t => t.Enabled).ToArray();
+        var settings = config.Load(); var targets = settings.Qq.Targets.Where(t => t.Enabled).ToArray();
         if (targets.Length == 0) throw new AppException("QQ_NO_TARGET", "尚未绑定通知目标。先在 QQ 设置中绑定私聊或群聊。");
         List<string> errors = [];
         foreach (var target in targets)
         {
             try
             {
-                var sent = await qq.SendTextAsync(target, Sanitizer.QqText(notification), cancellationToken);
+                var linkFiles = target.Kind == "c2c" && settings.RemoteCodex.Enabled && target.Id == settings.RemoteCodex.OwnerId
+                    && Guid.TryParse(notification.Metadata.GetValueOrDefault("thread_id"), out _) && !string.IsNullOrWhiteSpace(notification.Metadata.GetValueOrDefault("turn_id"));
+                var sent = await qq.SendTextAsync(target, Sanitizer.QqText(notification), cancellationToken, linkFiles: linkFiles);
                 if (receipt is not null) await receipt(target, notification, sent);
             }
             catch (Exception e) { errors.Add(AppException.Describe(e)); }

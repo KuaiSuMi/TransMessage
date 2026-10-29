@@ -61,7 +61,8 @@ public sealed class AppRuntime : IAsyncDisposable
         try
         {
             var target = new QqTarget { Id = owner, Kind = "c2c" };
-            var receipt = await Qq.SendTextAsync(target, Security.Sanitizer.QqText(clean), ct, replyId);
+            var linkFiles = Guid.TryParse(clean.Metadata.GetValueOrDefault("thread_id"), out _) && !string.IsNullOrWhiteSpace(clean.Metadata.GetValueOrDefault("turn_id"));
+            var receipt = await Qq.SendTextAsync(target, Security.Sanitizer.QqText(clean), ct, replyId, linkFiles);
             await RememberReferenceAsync(target, clean, receipt); result = new(true, clean.Id, "sent");
         }
         catch (Exception e) { result = new(false, clean.Id, e is AppException error && (error.Code.StartsWith("QQ_4", StringComparison.Ordinal) || error.Code is "QQ_NOT_CONFIGURED" or "QQ_REPLY_LIMIT") ? "failed" : "uncertain", AppException.Describe(e)); }
