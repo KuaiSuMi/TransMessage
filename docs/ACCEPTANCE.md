@@ -11,7 +11,9 @@
 - `scripts/verify.ps1` 完整门禁通过：267 项自动测试，0 失败、0 跳过，零警告构建，GUI 渲染和依赖审计。新增托管通知去重测试覆盖真实 Desktop 元信息、notify 与日志两个入口，以及停用控制后恢复普通通知。证据：`artifacts/test-results/verified.trx`。
 - GUI 沿用现有「新建实时问答会话」卡片，补充 QQ 指令说明；浅色大字体与深色整页渲染已检查，无新增裁切和重叠。
 
-待执行：QQ 手机端项目选择与新建会话实测、发布包检查、发布和软件内升级验证。
+[v0.3.4 标签 CI](https://github.com/KuaiSuMi/TransMessage/actions/runs/40826062332) 已通过最终 267 项测试、GUI 渲染、依赖审计、打包及 4 项发布程序检查；本地 ZIP 解压后的 4 项程序检查同样通过。证据：`artifacts/release-v034-ci.log`、`artifacts/test-results/published-v034.trx`。
+
+[v0.3.4](https://github.com/KuaiSuMi/TransMessage/releases/tag/v0.3.4) 已公开 ZIP 与 SHA256SUMS。本机实际实例通过正式更新源从 0.3.3 升至 0.3.4，配置字节保留、旧版 exe 备份、自动重启及窗口唤起通过；证据：`artifacts/update-actual-v034.json`。QQ 手机端项目选择与新建会话仍待用户实测。
 
 ---
 
