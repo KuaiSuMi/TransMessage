@@ -1,5 +1,10 @@
 # 研究与取舍
 
+## 0.3.1 编号交互核查（2026-10-29）
+
+[官方文本交互](https://bot.q.qq.com/wiki/develop/api-v2/server-inter/message/trans/text-chain.html)支持在 Markdown 中使用 `qqbot-cmd-input`，点击后填入输入框，由用户编辑发送。text/show 属性做 URL 编码，reference=false；本版仅为匹配的 12 位会话编号生成标签，其余正文转义为文字，不解释模型输出中的指令标签、Markdown 链接或图片，也不额外截断审批正文。
+
+[官方 Markdown 文档](https://bot.q.qq.com/wiki/develop/api-v2/server-inter/message/type/markdown.html)说明私聊和群聊自定义 Markdown 已向所有机器人开放。无编号消息仍是普通文本；有编号消息使用 msg_type=2 与 markdown.content。官方没有保证标签固定蓝色，也未提供可确认的 markdown.content 数字上限，不伪造客户端外观或平台额度结论。
 ## 0.3.0 追加核查（2026-10-29）
 
 - [QQ 私聊事件](https://bot.q.qq.com/wiki/develop/api-v2/autogen/event/c2c_message_create.html)：引用消息类型为 103；`message_scene.ext` 中的 `ref_msg_idx=` 关联原消息，值可能带 `=`，仅按首个等号拆分。新输入只读取顶层正文和附件，不重复执行 `msg_elements` 中的旧内容。

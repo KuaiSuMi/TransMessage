@@ -1,7 +1,9 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using TransMessage.Core.Configuration;
 using TransMessage.Core.Notifications;
 using TransMessage.Core.Security;
@@ -20,6 +22,7 @@ public sealed class QqClient(HttpClient http, Func<(string AppId, string Secret)
     private string? _appId;
     private DateTimeOffset _refreshAt;
     private readonly Dictionary<(string Kind, string Target, string Reply), (int Sequence, DateTimeOffset Time)> _replySequences = [];
+    private static readonly Regex SessionNumber = new(@"#[0-9a-fA-F]{12}(?![0-9a-zA-Z_-])", RegexOptions.Compiled | RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(150));
     public string Status { get; private set; } = "未认证";
 
     public void InvalidateToken() => _refreshAt = DateTimeOffset.MinValue;
@@ -67,7 +70,9 @@ public sealed class QqClient(HttpClient http, Func<(string AppId, string Secret)
     public async Task<QqSendReceipt> SendTextAsync(QqTarget target, string text, CancellationToken ct, string? replyId = null)
     {
         var scope = target.Kind == "c2c" ? "users" : "groups";
-        var body = new Dictionary<string, object> { ["content"] = text, ["msg_type"] = 0 };
+        var markdown = InteractiveText(text);
+        var body = markdown is null ? new Dictionary<string, object> { ["content"] = text, ["msg_type"] = 0 }
+            : new Dictionary<string, object> { ["markdown"] = new { content = markdown }, ["msg_type"] = 2 };
         if (replyId is not null)
         {
             body["msg_id"] = replyId;
@@ -90,6 +95,41 @@ public sealed class QqClient(HttpClient http, Func<(string AppId, string Secret)
         var reference = root.TryGetProperty("ext_info", out var extra) && extra.ValueKind == JsonValueKind.Object
             && extra.TryGetProperty("ref_idx", out var index) && index.ValueKind == JsonValueKind.String ? index.GetString() : null;
         return new(id.GetString()!, timestamp, reference is { Length: > 0 and <= 2048 } ? reference : null);
+    }
+
+    private static string? InteractiveText(string text)
+    {
+        var matches = SessionNumber.Matches(text);
+        if (matches.Count == 0) return null;
+        var result = new StringBuilder(); var position = 0;
+        foreach (Match match in matches)
+        {
+            AppendLiteral(result, text.AsSpan(position, match.Index - position));
+            result.Append("<qqbot-cmd-input text=\"").Append(Uri.EscapeDataString(match.Value + " "))
+                .Append("\" show=\"").Append(Uri.EscapeDataString(match.Value)).Append("\" reference=\"false\" />");
+            position = match.Index + match.Length;
+        }
+        AppendLiteral(result, text.AsSpan(position));
+        return result.ToString();
+
+        static void AppendLiteral(StringBuilder result, ReadOnlySpan<char> value)
+        {
+            // Task output stays literal; only the session numbers above create interactive tags.
+            foreach (var c in value)
+            {
+                switch (c)
+                {
+                    case '&': result.Append("&amp;"); break;
+                    case '<': result.Append("&lt;"); break;
+                    case '>': result.Append("&gt;"); break;
+                    case '\r': break;
+                    case '\n': result.Append("\n\n"); break;
+                    case '\\' or '`' or '*' or '_' or '{' or '}' or '[' or ']' or '(' or ')' or '#' or '+' or '-' or '.' or '!' or '|' or '~':
+                        result.Append('\\').Append(c); break;
+                    default: result.Append(c); break;
+                }
+            }
+        }
     }
 
     private async Task<JsonDocument> RequestAsync(HttpMethod method, string path, object? body, CancellationToken ct)

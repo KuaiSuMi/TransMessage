@@ -22,7 +22,7 @@ $env:TM_TEST_EXE = (Get-Content dist/build-info.json | ConvertFrom-Json).executa
 dotnet test tests/TransMessage.Tests --filter FullyQualifiedName~CliIntegrationTests
 ```
 
-CI push/PR 运行相同检查并上传 ZIP。v* tag 在检查完成后发布 GitHub Release。版本目前为 0.3.0；发布下一版本应同步 Directory.Build.props 与 scripts/build.ps1，再打相同 tag。不能仅修改 ZIP 文件名伪造版本。
+CI push/PR 运行相同检查并上传 ZIP。v* tag 在检查完成后发布 GitHub Release。版本目前为 0.3.1；发布下一版本应同步 Directory.Build.props 与 scripts/build.ps1，再打相同 tag。不能仅修改 ZIP 文件名伪造版本。
 
 `tests/TransMessage.GuiTests` 使用实际 WPF 组件渲染 10 页浅色/深色，以及设置、QQ 控制、历史的 200% 文字样例，以及降低透明度和对比度样例，共 34 张，历史使用独立测试数据。它验证资源/布局可渲染，不代替真实鼠标、读屏、不同 DPI/OS 和系统托盘的完整实机验收。
 
