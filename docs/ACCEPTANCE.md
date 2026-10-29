@@ -8,6 +8,8 @@
 - 附件为该轮最终回复链接的本地实际文件，每页清单加最多 3 个文件卡片。≤5 MiB 直接上传，更大文件分片上传，最高 200 MiB；源文件保持只读。HTTP 测试覆盖分片哈希、上传地址、序号配额、取消和发送状态不确定时不重发。导出独立于会话指令处理，上传期间可继续其他会话；使用同一请求的 5 分钟回复期限。
 - 新卡片已检查浅色、深色、200% 字体，无裁切或重叠。QQ 文件卡片的手机端下载仍待用户验收；未新增主动 QQ 测试消息。现有编号点击行为复用 0.3.1 用户确认结果。
 
+最终 ZIP 内 4 项发布程序检查通过，证据 `artifacts/test-results/published-v032.trx`。[v0.3.2 标签 CI](https://github.com/KuaiSuMi/TransMessage/actions/runs/40809967698)通过完整验证、打包和发布程序检查，已公开 [Release](https://github.com/KuaiSuMi/TransMessage/releases/tag/v0.3.2)。本机实际实例从公开更新源由 0.3.1 升至 0.3.2，配置字节保留、旧 exe 备份匹配、自动重启与窗口唤起通过；证据 `artifacts/update-actual-v032.json`。更新前本机没有托管会话，原 Codex Desktop 会话保持运行。
+
 ---
 
 ## 0.3.1 编号点击验收
