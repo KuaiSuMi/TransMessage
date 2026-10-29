@@ -26,6 +26,9 @@ public static class CodexEvents
     public static DateTimeOffset? Timestamp(JsonElement value) => value.ValueKind == JsonValueKind.Object && value.TryGetProperty("timestamp", out var timestamp)
         && timestamp.ValueKind == JsonValueKind.String && timestamp.TryGetDateTimeOffset(out var time) ? time : null;
 
+    internal static bool ManagedNotificationsEnabled(AppConfig config, string threadId) => config.RemoteCodex.Enabled
+        && config.RemoteCodex.Threads.Any(thread => thread.Managed && thread.Id.Equals(threadId, StringComparison.OrdinalIgnoreCase));
+
     public static SessionIdentity? ReadIdentity(JsonElement meta)
     {
         var id = Text(meta, "id");
@@ -54,6 +57,7 @@ public static class CodexEvents
             if (Text(root, "type") != "agent-turn-complete" || !config.Codex.Enabled) return null;
             var thread = Text(root, "thread-id"); var turn = Text(root, "turn-id");
             if (identity is not { IsUser: true } || identity.ThreadId != thread || string.IsNullOrWhiteSpace(turn)) return null;
+            if (ManagedNotificationsEnabled(config, identity.ThreadId)) return null;
             var client = Text(root, "client") ?? identity.Client;
             if (client.Contains("subagent", StringComparison.OrdinalIgnoreCase) || client.Contains("internal", StringComparison.OrdinalIgnoreCase)) return null;
             if (!root.TryGetProperty("input-messages", out var inputs) || inputs.ValueKind != JsonValueKind.Array) return null;
@@ -169,7 +173,8 @@ public sealed class CodexTurnReader
                     _turn = null;
                     var state = eventType == "turn_aborted" ? "cancelled" : payload.TryGetProperty("error", out var error) && error.ValueKind == JsonValueKind.Object ? "failed" : "completed";
                     var duration = payload.TryGetProperty("duration_ms", out var millis) && millis.TryGetInt64(out var number) ? (long?)number : null;
-                    return config.Codex.Enabled ? CodexEvents.Create(config, Identity, turn, _input!, CodexEvents.Text(payload, "last_agent_message"), state, duration, sanitizer, CodexEvents.Timestamp(root)) : null;
+                    return config.Codex.Enabled && !CodexEvents.ManagedNotificationsEnabled(config, Identity.ThreadId)
+                        ? CodexEvents.Create(config, Identity, turn, _input!, CodexEvents.Text(payload, "last_agent_message"), state, duration, sanitizer, CodexEvents.Timestamp(root)) : null;
             }
         }
         catch (JsonException) { _valid = false; }

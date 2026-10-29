@@ -18,7 +18,7 @@ public sealed partial class RemoteCodex
         public DateTimeOffset Expires { get; set; } = DateTimeOffset.UtcNow.AddMinutes(30);
     }
     private readonly ConcurrentDictionary<string, Draft> _drafts = new();
-    public const string Help = "任务\n状态 会话编号\n#会话编号 你的要求（也可引用通知直接回复）\n引用通知后 /d 开始图文草稿（也接受 /draft）\n/s 发送草稿 · /c 取消草稿\n引用通知后 /model 查看模型 · /model 模型名\n引用通知后 /reasoning 查看档位 · /reasoning high\n引用完成通知后 /full [页码] 阅读全文（每页最多 4 段）\n引用完成通知后 /file [页码] 获取附件（每页最多 3 个）\n省略页码从第 1 页开始；引用回复，按下一页提示发送 /full 2 或 /file 2 继续。\n待回答\n回答 问题码 答案（多个问题用 | 分隔）\n批准 问题码 / 拒绝 问题码\n\n绑定的本人私聊可直接控制会话。多个草稿同时存在时请引用或带 #编号。";
+    public const string Help = "/p 查看项目（也可发送“项目”）· /p 2 下一页\n/new 项目编号 [首条要求] 新建对话（也可用“新建”）\n任务\n状态 会话编号\n#会话编号 你的要求（也可引用通知直接回复）\n引用通知后 /d 开始图文草稿（也接受 /draft）\n/s 发送草稿 · /c 取消草稿\n引用通知后 /model 查看模型 · /model 模型名\n引用通知后 /reasoning 查看档位 · /reasoning high\n引用完成通知后 /full [页码] 阅读全文（每页最多 4 段）\n引用完成通知后 /file [页码] 获取附件（每页最多 3 个）\n省略页码从第 1 页开始；引用回复，按下一页提示发送 /full 2 或 /file 2 继续。\n待回答\n回答 问题码 答案（多个问题用 | 分隔）\n批准 问题码 / 拒绝 问题码\n\n绑定的本人私聊可直接控制会话。多个草稿同时存在时请引用或带 #编号。";
 
     private static string Pop(ref string text)
     {
@@ -32,6 +32,8 @@ public sealed partial class RemoteCodex
         var text = message.Text.Trim(); var command = ""; string? explicitId = null;
         var remaining = text; var first = Pop(ref remaining);
         if (first.StartsWith('#')) { explicitId = first[1..]; text = remaining; remaining = text; first = Pop(ref remaining); }
+        if (first is "/p" or "项目") return new("/p", remaining, null, null);
+        if (first is "/new" or "新建") return new("/new", remaining, null, null);
         if (first is "帮助" or "任务" or "待回答") return new(first, remaining, null, null);
         if (first == "回答" || (first is "批准" or "拒绝") && remaining.Length > 0)
         {
@@ -95,15 +97,28 @@ public sealed partial class RemoteCodex
             if (!_exports.Writer.TryWrite((route, message))) throw new AppException("CONTROL_EXPORT_BUSY", "正在发送其他全文或附件，请稍后再试。");
             return null;
         }
-        if (route.Command is "帮助" or "任务" or "待回答" or "状态" or "/model" or "/reasoning" or "批准" or "拒绝" or "回答")
+        if (route.Command is "帮助" or "任务" or "待回答" or "状态" or "/p" or "/new" or "/model" or "/reasoning" or "批准" or "拒绝" or "回答")
         {
             if (message.Images.Count > 0) throw new AppException("CONTROL_IMAGE_COMMAND", "请单独发送这条指令。上传图片可引用会话发送 /d。");
             switch (route.Command)
             {
                 case "帮助": return Help;
+                case "/p":
+                    var page = 1;
+                    if (route.Content.Length > 0 && (!int.TryParse(route.Content, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out page) || page < 1))
+                        throw new AppException("CONTROL_PROJECT_PAGE", "发送 /p 查看第一页，或 /p 2 查看下一页。");
+                    return await ProjectListAsync(page, ct);
+                case "/new":
+                    var prompt = route.Content; var numberText = Pop(ref prompt);
+                    if (!int.TryParse(numberText, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var number) || number < 1)
+                        throw new AppException("CONTROL_PROJECT", "发送 /p 查看项目，再发送 /new 项目编号 [首条要求]。");
+                    var created = await CreateProjectThreadAsync(number, prompt, ct);
+                    await NotifyAsync(message.Sender, $"Codex · #{created.Thread.Id[^12..]} · {TaskName.Short(created.Thread.Name, sanitizer)}", created.Message,
+                        message.Id, ct, message.Time, created.Thread.Id);
+                    return null;
                 case "任务":
                     var tasks = await TasksAsync(ct);
-                    return tasks.Count == 0 ? "未发现普通会话。请在电脑新建 Codex 会话，或创建实时会话。" : string.Join("\n", tasks.Select(t => $"#{t.Id[^12..]} · {TaskName.Short(t.Name, sanitizer)}\n{t.State}"));
+                    return tasks.Count == 0 ? "还没有会话。发送 /p 查看项目，再用 /new 项目编号 新建。" : string.Join("\n", tasks.Select(t => $"#{t.Id[^12..]} · {TaskName.Short(t.Name, sanitizer)}\n{t.State}"));
                 case "待回答": return Pending.Count == 0 ? "当前没有待回答问题。" : string.Join("\n\n", Pending.Select(p => $"#{p.ThreadId[^12..]}\n{Describe(p)}"));
                 case "状态":
                     var thread = route.Thread!; var info = await TaskStateAsync(thread.Id, ct);

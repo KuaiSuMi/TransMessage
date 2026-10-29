@@ -99,16 +99,33 @@ public sealed partial class RemoteCodex
         { return "当前 Desktop 没有可连接的官方实时控制通道。可追加共享消息，但不能从 QQ 回答该窗口的待输入问题。"; }
     }
 
-    public async Task<CodexTaskInfo> CreateManagedAsync(string directory, string name, CancellationToken ct = default)
+    public async Task<CodexTaskInfo> CreateManagedAsync(string directory, string name, CancellationToken ct = default,
+        string? projectId = null, IReadOnlyList<string>? runtimeWorkspaceRoots = null)
     {
         if (!Path.IsPathFullyQualified(directory) || !Directory.Exists(directory)) throw new AppException("CONTROL_DIRECTORY", "请选择存在的项目目录。");
+        if (runtimeWorkspaceRoots is not null && (runtimeWorkspaceRoots.Count == 0 || runtimeWorkspaceRoots.Any(root => !AvailableDirectory(root))))
+            throw new AppException("CONTROL_DIRECTORY", "项目的每个目录都必须是本机可用的绝对路径。");
         if (string.IsNullOrWhiteSpace(name) || name.Length > 100) throw new AppException("CONTROL_NAME", "会话名称需要 1–100 个字符。");
         if (config.Load().RemoteCodex.Threads.Count(t => t.Managed) >= 50) throw new AppException("CONTROL_THREADS", "最多保留 50 个托管会话。");
-        var result = await Rpc().CallAsync("thread/start", new { cwd = directory, sandbox = "workspace-write", approvalPolicy = "on-request", approvalsReviewer = "user", config = new Dictionary<string, object> { ["features.default_mode_request_user_input"] = true } }, ct);
-        var info = TaskInfo(result.GetProperty("thread"));
-        config.Update(c => c.RemoteCodex.Threads.Add(new() { Id = info.Id, Name = name.Trim(), Managed = true }));
+        var parameters = new Dictionary<string, object>
+        {
+            ["cwd"] = directory,
+            ["threadSource"] = "user",
+            ["sandbox"] = "workspace-write",
+            ["approvalPolicy"] = "on-request",
+            ["approvalsReviewer"] = "user",
+            ["config"] = new Dictionary<string, object> { ["features.default_mode_request_user_input"] = true }
+        };
+        if (projectId is not null) parameters["projectId"] = projectId;
+        if (runtimeWorkspaceRoots is not null) parameters["runtimeWorkspaceRoots"] = runtimeWorkspaceRoots;
+        var rpc = Rpc(); var result = await rpc.CallAsync("thread/start", parameters, ct);
+        var info = TaskInfo(result.GetProperty("thread")) with { Name = name.Trim(), State = "会话已创建" };
+        try { await rpc.CallAsync("thread/name/set", new { threadId = info.Id, name = info.Name }, ct); }
+        catch (Exception e) { info = info with { State = "会话已创建；名称同步失败：" + AppException.Describe(e) }; }
+        try { config.Update(c => c.RemoteCodex.Threads.Add(new() { Id = info.Id, Name = info.Name, Managed = true })); }
+        catch (Exception e) { throw new AppException("CONTROL_CREATED_SAVE", $"会话 #{info.Id[^12..]} 已创建，但本地记录保存失败：{AppException.Describe(e)}。请勿重复 /new。"); }
         _loaded[info.Id] = info;
-        return info with { Name = name.Trim() };
+        return info;
     }
 
     public Task<string> ContinueAsync(string id, string text, CancellationToken ct = default)

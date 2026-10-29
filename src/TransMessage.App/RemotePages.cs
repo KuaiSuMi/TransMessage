@@ -110,6 +110,8 @@ public partial class MainWindow
         result.Children.Add(Text("附件来自该轮最终回复中的本地文件和图片链接。回复与文件清单保留原始北京时间，精确到秒。"));
 
         var create = Card("新建实时问答会话", "需要在 QQ 回答问题或调整模型时，由 TransMessage 创建并运行会话。退出或停用控制会结束托管进程。");
+        create.Children.Add(Text("在 QQ 发送 /p（或“项目”）查看已有项目，/p 2 翻页。"));
+        create.Children.Add(Text("发送 /new 项目编号 [首条要求]（或“新建”）。省略要求先建空会话，再引用创建回执继续。"));
         var name = Field(create, "会话名称", "我的远程任务"); var directory = Field(create, "项目目录", "");
         var createActions = Actions(create);
         Action(createActions, "选择项目目录…", () => { var dialog = new OpenFolderDialog(); if (dialog.ShowDialog(this) == true) directory.Text = dialog.FolderName; });

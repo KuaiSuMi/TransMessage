@@ -89,6 +89,34 @@ public sealed class CodexTests
         Assert.Null(reader.ReadLine(waiting, cfg));
         reader.ReadLine(Event("event_msg", new { type = "turn_aborted", turn_id = "a" }), cfg); Assert.Null(reader.ReadLine(waiting, cfg));
     }
+    [Theory]
+    [InlineData(true, true)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(false, false)]
+    public void DesktopManagedCompletionUsesOnlyActiveManagedChannel(bool enabled, bool managed)
+    {
+        var cfg = new AppConfig(); cfg.RemoteCodex.Enabled = enabled;
+        cfg.RemoteCodex.Threads.Add(new() { Id = ThreadId, Managed = managed });
+        var meta = JsonSerializer.SerializeToElement(new { id = ThreadId, cwd = @"C:\Code", originator = "Codex Desktop", source = "vscode", thread_source = "user" });
+        var identity = CodexEvents.ReadIdentity(meta)!; Assert.True(identity.IsUser);
+        var hook = CodexEvents.ParseNotify(Payload(), cfg, identity);
+        var reader = new CodexTurnReader(); reader.ReadLine(Event("session_meta", meta), cfg);
+        reader.ReadLine(Event("event_msg", new { type = "task_started", turn_id = "turn-1" }), cfg);
+        reader.ReadLine(Event("event_msg", new { type = "user_message", message = "实现功能" }), cfg);
+        var rollout = reader.ReadLine(Event("event_msg", new { type = "task_complete", turn_id = "turn-1", last_agent_message = "已完成" }), cfg);
+        Assert.True(reader.RecognizedCompletion);
+        if (enabled && managed) { Assert.Null(hook); Assert.Null(rollout); }
+        else { Assert.NotNull(hook); Assert.NotNull(rollout); Assert.Equal(hook.Id, rollout.Id); }
+
+        // Disabling control restores monitoring without removing the Managed record or recreating the reader.
+        cfg.RemoteCodex.Enabled = false;
+        reader.ReadLine(Event("event_msg", new { type = "task_started", turn_id = "turn-2" }), cfg);
+        reader.ReadLine(Event("event_msg", new { type = "user_message", message = "继续处理" }), cfg);
+        var resumed = reader.ReadLine(Event("event_msg", new { type = "task_complete", turn_id = "turn-2" }), cfg);
+        Assert.NotNull(resumed);
+        Assert.Equal(CodexEvents.ParseNotify(Payload("继续处理", "turn-2"), cfg, identity)!.Id, resumed.Id);
+    }
     [Fact]
     public void ManagedSessionsDoNotBroadcastDuplicateNotifications()
     {

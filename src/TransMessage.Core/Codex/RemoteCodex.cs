@@ -271,6 +271,7 @@ public sealed partial class RemoteCodex(ConfigStore config, Sanitizer sanitizer,
         _rpc = null; _stop?.Dispose(); _stop = null;
         _loaded.Clear(); _running.Clear(); _lastResults.Clear();
         _drafts.Clear();
+        _projectChoices = null;
         while (_inbox.Reader.TryRead(out _)) { }
         while (_notices.Reader.TryRead(out _)) { }
         while (_exports.Reader.TryRead(out _)) { }

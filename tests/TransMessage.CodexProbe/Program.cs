@@ -97,11 +97,14 @@ requires_openai_auth = false
     var efforts = selected.GetProperty("supportedReasoningEfforts").EnumerateArray().Select(e => e.GetProperty("reasoningEffort").GetString()!).ToArray();
     var effort = efforts.Contains("low", StringComparer.Ordinal) ? "low" : efforts.First();
     Console.WriteLine($"Native catalog selected {modelName} / {effort}");
-    var a = await remote.CreateManagedAsync(root, "隔离图文 A", stop.Token);
+    var secondRoot = Path.Combine(root, "second-workspace"); Directory.CreateDirectory(secondRoot);
+    var project = await native.CallAsync("project/create", new { name = "隔离 QQ 项目", roots = new[] { new { path = root }, new { path = secondRoot } }, idempotencyKey = Guid.NewGuid().ToString() }, stop.Token);
+    var projectId = project.GetProperty("project").GetProperty("id").GetString();
+    Check((await remote.ProjectListAsync(ct: stop.Token)).Contains("隔离 QQ 项目", StringComparison.Ordinal), "Native project was absent from the QQ project list.");
+    var a = (await remote.CreateProjectThreadAsync(1, "询问检查范围", stop.Token)).Thread;
     var b = await remote.CreateManagedAsync(root, "隔离图文 B", stop.Token);
     await remote.ModelCommandAsync(a.Id, modelName, stop.Token);
     await remote.ReasoningCommandAsync(a.Id, effort, stop.Token);
-    await remote.ContinueAsync(a.Id, "询问检查范围", stop.Token);
     await UntilAsync(() => remote.Pending.Count == 1 && notices.Any(n => n.Notice.Metadata.ContainsKey("question_code")), stop.Token);
     var pending = remote.Pending.Single();
     var question = notices.Single(n => n.Notice.Metadata.GetValueOrDefault("question_code") == pending.Code);
@@ -155,6 +158,13 @@ requires_openai_auth = false
     Check(completedThreads.SequenceEqual(new[] { a.Id, b.Id, a.Id }), "Native turn completion order or session association is incorrect.");
     Check(notices.Any(n => n.Notice.Metadata.GetValueOrDefault("thread_id") == a.Id && n.Notice.Message.Contains("图文联调完成 A", StringComparison.Ordinal))
         && notices.Any(n => n.Notice.Metadata.GetValueOrDefault("thread_id") == b.Id && n.Notice.Message.Contains("图文联调完成 B", StringComparison.Ordinal)), "Interleaved result notification lost its thread association.");
+    var restored = await native.CallAsync("thread/resume", new { threadId = a.Id, excludeTurns = true }, stop.Token);
+    await File.WriteAllTextAsync(Path.Combine(root, "project-thread.json"), restored.GetRawText(), stop.Token);
+    var createdThread = restored.GetProperty("thread");
+    Check(createdThread.GetProperty("projectId").GetString() == projectId && createdThread.GetProperty("name").GetString() == a.Name,
+        "New thread lost its native project or synchronized title.");
+    Check(restored.GetProperty("runtimeWorkspaceRoots").EnumerateArray().Select(x => x.GetString()).SequenceEqual(new[] { root, secondRoot }),
+        "New thread lost one of the project workspace roots.");
     var evidence = new
     {
         time = DateTimeOffset.Now,
@@ -177,6 +187,10 @@ requires_openai_auth = false
         selected_model = modelName,
         selected_effort = effort,
         next_turn_settings_verified = true,
+        native_project_list = true,
+        project_thread_first_prompt = true,
+        project_membership_and_name = true,
+        multiple_project_roots = true,
         command_count = commandCount,
         model_requests = requestNumber,
         thread_ids = new[] { a.Id, b.Id }
