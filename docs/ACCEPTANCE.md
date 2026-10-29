@@ -8,7 +8,9 @@
 - 本地附件标签按接收目标及控制配置生成，填入 `/file` 并引用原消息；回归覆盖会话与轮次关联、回复序号和引用回执。
 - 全文分段覆盖中文、四字节 emoji、带空格的链接标题、编号形态的 URL 片段和行内代码。引用式链接先展开为内联链接，再按每段 2600 字节上限拆分；预算内的链接保持完整，超预算内容逐字符推进。
 
-待执行：最终 CI 门禁、发布包检查、GitHub 发布和软件内升级验证。QQ 手机端本次链接显示、点击及附件下载验收待完成。
+最终 [v0.3.3 CI](https://github.com/KuaiSuMi/TransMessage/actions/runs/40818981814) 完整门禁通过：243 项自动测试、GUI 渲染、依赖审计和 4 项发布程序检查，0 失败、0 跳过；本地最终 ZIP 解压后同样通过 4 项程序检查。证据：`artifacts/release-v033-ci.log`、`artifacts/test-results/published-v033.trx`。
+
+[v0.3.3](https://github.com/KuaiSuMi/TransMessage/releases/tag/v0.3.3) 已公开 ZIP 与 SHA256SUMS。本机实际实例经正式更新源从 0.3.2 升至 0.3.3，配置字节保留、旧版 exe 备份、自动重启和窗口唤起均通过；证据：`artifacts/update-actual-v033.json`。本次没有主动发送 QQ 测试消息，手机端链接显示、点击及附件下载待用户确认。
 
 ---
 
