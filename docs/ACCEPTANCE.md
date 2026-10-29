@@ -6,7 +6,7 @@
 - 无编号消息保持普通文本。正文不会执行模型输出中的指令标签、Markdown 图片和链接；新增标签不额外截断正文。平台未公布可确认的 Markdown 长度上限，不将本机预算当作平台额度。
 - GUI、图文路由、Codex 控制、依赖和更新逻辑没有改变，复用 0.3.0 的 34 张渲染、原生并发图文联调和升级验证，不重复无关检查。
 
-手机 QQ 的标签颜色和点击效果待用户确认；官方保证可点击填入，未承诺所有客户端固定显示蓝色。旧消息不会被改写。本次打包与发布结果完成后追加。
+经用户明确授权，向已绑定本人 QQ 私聊发送一条真实编号测试；QQ API 接收成功，用户确认“可以点击并填入”，没有自动发送任务。证据：`artifacts/qq-number-check/sent.json`。官方没有承诺所有客户端固定显示蓝色；旧消息不会被改写。最终 ZIP 内 4 项 CLI 测试通过（`artifacts/test-results/published-v031.trx`）；[标签发布 CI](https://github.com/KuaiSuMi/TransMessage/actions/runs/40803806476) 通过完整检查并发布 [v0.3.1](https://github.com/KuaiSuMi/TransMessage/releases/tag/v0.3.1)。本机实际实例经软件内更新从 0.3.0 升至 0.3.1，配置保持、旧版备份、自动重启和窗口唤起均通过，证据 `artifacts/update-actual-v031.json`。
 
 ---
 ## 0.3.0 验收记录
