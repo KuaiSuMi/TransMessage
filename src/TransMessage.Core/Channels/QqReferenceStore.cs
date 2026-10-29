@@ -4,23 +4,23 @@ using TransMessage.Core.Configuration;
 
 namespace TransMessage.Core.Channels;
 
-public sealed record QqReference(string ThreadId, string? QuestionCode);
+public sealed record QqReference(string ThreadId, string? QuestionCode, string? TurnId = null, DateTimeOffset? Timestamp = null);
 
 public sealed class QqReferenceStore(AppPaths paths)
 {
-    private sealed record Entry(string Owner, string Index, string ThreadId, string? QuestionCode, DateTimeOffset Time);
+    private sealed record Entry(string Owner, string Index, string ThreadId, string? QuestionCode, DateTimeOffset Time, string? TurnId = null, DateTimeOffset? Timestamp = null);
     private string FileName => Path.Combine(paths.Root, "qq-references.dpapi");
 
-    public void Save(string owner, string refIndex, string threadId, string? questionCode = null)
+    public void Save(string owner, string refIndex, string threadId, string? questionCode = null, string? turnId = null, DateTimeOffset? timestamp = null)
     {
         if (string.IsNullOrWhiteSpace(owner) || owner.Length > 256 || string.IsNullOrWhiteSpace(refIndex) || refIndex.Length > 2048
-            || !Guid.TryParse(threadId, out _) || questionCode?.Length > 64)
+            || !Guid.TryParse(threadId, out _) || questionCode?.Length > 64 || turnId?.Length > 128)
             throw new AppException("QQ_REFERENCE_INVALID", "QQ 引用关联信息无效。");
         AtomicFile.Locked(FileName, () =>
         {
             var entries = ReadCore();
             entries.RemoveAll(x => x.Owner == owner && x.Index == refIndex);
-            entries.Add(new(owner, refIndex, threadId, questionCode, DateTimeOffset.UtcNow));
+            entries.Add(new(owner, refIndex, threadId, questionCode, DateTimeOffset.UtcNow, turnId, timestamp));
             var clear = JsonSerializer.SerializeToUtf8Bytes(entries.OrderBy(x => x.Time).TakeLast(2000));
             try { AtomicFile.WriteBytes(FileName, ProtectedData.Protect(clear, null, DataProtectionScope.CurrentUser)); }
             finally { CryptographicOperations.ZeroMemory(clear); }
@@ -31,7 +31,7 @@ public sealed class QqReferenceStore(AppPaths paths)
     public QqReference? Find(string owner, string refIndex) => AtomicFile.Locked(FileName, () =>
     {
         var entry = ReadCore().LastOrDefault(x => x.Owner == owner && x.Index == refIndex);
-        return entry is null ? null : new QqReference(entry.ThreadId, entry.QuestionCode);
+        return entry is null ? null : new QqReference(entry.ThreadId, entry.QuestionCode, entry.TurnId, entry.Timestamp);
     });
 
     private List<Entry> ReadCore()

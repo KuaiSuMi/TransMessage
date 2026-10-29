@@ -137,7 +137,13 @@ public sealed partial class RemoteCodex
         if (!thread.Managed)
         {
             await rpc.CallAsync("thread/queue/add", new { threadId = thread.Id, input, clientUserMessageId = Guid.NewGuid().ToString() }, ct);
-            return $"#{thread.Id[^12..]} 已追加到共享消息队列，等待 Desktop 处理。入队不代表已经执行；本连接不会接管该会话。";
+            try { await (wakeDesktop?.Invoke(thread.Id, ct) ?? DesktopWake.RequestAsync(thread.Id, ct)); }
+            catch (Exception e) when (e is not OperationCanceledException)
+            {
+                Status = "Desktop 唤醒失败：" + AppException.Describe(e);
+                return $"#{thread.Id[^12..]} 消息已加入队列。Desktop 唤醒失败，请在电脑打开此会话。";
+            }
+            return $"#{thread.Id[^12..]} 已加入共享消息队列并发送 Desktop 后台唤醒请求，继续在原会话处理。";
         }
         if (_running.ContainsKey(thread.Id)) throw Busy();
         if (imageCount > 0)

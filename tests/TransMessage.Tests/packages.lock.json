@@ -35,6 +35,11 @@
         "resolved": "4.0.0",
         "contentHash": "kzLFyBYUnoidpGOXvpNOfIo8C92gVgVR6X8ncHwhcrDYugiOut5rrhDkr0L3cWHd7J2pKXf6LgaeXoBBDlx1ag=="
       },
+      "Markdig": {
+        "type": "Transitive",
+        "resolved": "1.4.2",
+        "contentHash": "C5jl2hFLK5KHxWWWO6JxfuQCRirW5DGnCn9IEhJ7xgBMVnd+PjRNdAKO2C6YHpkOtVvZMJ8Zbma7B+CDi+hl+g=="
+      },
       "Microsoft.CodeCoverage": {
         "type": "Transitive",
         "resolved": "18.10.1",
@@ -114,6 +119,7 @@
       "transmessage.core": {
         "type": "Project",
         "dependencies": {
+          "Markdig": "[1.4.2, )",
           "Serilog": "[4.4.0, )",
           "Serilog.Sinks.File": "[7.0.0, )",
           "Tomlyn": "[2.10.1, )"

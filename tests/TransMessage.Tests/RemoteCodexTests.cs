@@ -21,7 +21,7 @@ public sealed class RemoteCodexTests
     private static RemoteCodex Remote(TestData data, RpcFixture server, ConcurrentQueue<Notification>? notices = null) => new(data.Config, new(), (owner, notice, reply, ct) =>
     {
         Assert.Equal("owner", owner); notices?.Enqueue(notice); return Task.FromResult(new DeliveryResult(true, notice.Id, "sent"));
-    }, async (_, ct) => { await server.Client.InitializeAsync(ct); return server.Client; });
+    }, async (_, ct) => { await server.Client.InitializeAsync(ct); return server.Client; }, wakeDesktop: (_, _) => Task.CompletedTask);
 
     [Fact]
     public async Task DesktopContinuationOnlyQueuesAndRejectsOtherUsersThreadsStaleOrRepeatedMessages()

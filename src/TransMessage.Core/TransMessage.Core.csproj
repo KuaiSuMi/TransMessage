@@ -3,6 +3,7 @@
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <FrameworkReference Include="Microsoft.WindowsDesktop.App.WPF" />
     <PackageReference Include="Tomlyn" Version="2.10.1" />
+    <PackageReference Include="Markdig" Version="1.4.2" />
     <PackageReference Include="Serilog" Version="4.4.0" />
     <PackageReference Include="Serilog.Sinks.File" Version="7.0.0" />
   </ItemGroup>

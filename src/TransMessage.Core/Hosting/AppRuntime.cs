@@ -47,14 +47,16 @@ public sealed class AppRuntime : IAsyncDisposable
         Sanitizer = new(() => new[] { Secrets.Get("qq") ?? "", Secrets.Get("api") ?? "" });
         Dispatcher = new(Config, new(paths), Sanitizer, channel ?? new QqOfficialChannel(Config, Qq, RememberReferenceAsync), Log);
         Updater = new(_http, paths);
-        Remote = new(Config, Sanitizer, SendPrivateAsync);
+        Remote = new(Config, Sanitizer, SendPrivateAsync, sendFile: SendPrivateFileAsync);
     }
     private async Task<DeliveryResult> SendPrivateAsync(string owner, Notification notification, string? replyId, CancellationToken ct)
     {
         var c = Config.Load();
         if (!c.RemoteCodex.Enabled || c.RemoteCodex.OwnerId != owner || !c.Qq.Targets.Any(t => t.Id == owner && t.Kind == "c2c" && t.Enabled))
             return new(false, notification.Id, "failed", "私聊控制授权已撤销。");
-        var clean = Sanitizer.Clean(notification); var key = Dispatcher.History.Begin(clean, "控制者私聊");
+        var clean = Sanitizer.Clean(notification);
+        if (notification.Metadata.ContainsKey("reply_part")) clean = clean with { Message = Security.Sanitizer.Truncate(Sanitizer.Redact(notification.Message, trim: false), 3000) };
+        var key = Dispatcher.History.Begin(clean, "控制者私聊");
         DeliveryResult result;
         try
         {
@@ -62,15 +64,38 @@ public sealed class AppRuntime : IAsyncDisposable
             var receipt = await Qq.SendTextAsync(target, Security.Sanitizer.QqText(clean), ct, replyId);
             await RememberReferenceAsync(target, clean, receipt); result = new(true, clean.Id, "sent");
         }
-        catch (Exception e) { result = new(false, clean.Id, e is AppException error && (error.Code.StartsWith("QQ_4", StringComparison.Ordinal) || error.Code == "QQ_NOT_CONFIGURED") ? "failed" : "uncertain", AppException.Describe(e)); }
+        catch (Exception e) { result = new(false, clean.Id, e is AppException error && (error.Code.StartsWith("QQ_4", StringComparison.Ordinal) || error.Code is "QQ_NOT_CONFIGURED" or "QQ_REPLY_LIMIT") ? "failed" : "uncertain", AppException.Describe(e)); }
         Dispatcher.History.Complete(key, result.Status, result.Error); return result;
     }
     private Task RememberReferenceAsync(QqTarget target, Notification notification, QqSendReceipt receipt)
     {
         if (target.Kind == "c2c" && receipt.ReferenceIndex is { Length: > 0 } index
             && notification.Metadata.TryGetValue("thread_id", out var thread) && Guid.TryParse(thread, out _))
-            _qqReferences.Save(target.Id, index, thread, notification.Metadata.GetValueOrDefault("question_code"));
+            _qqReferences.Save(target.Id, index, thread, notification.Metadata.GetValueOrDefault("question_code"), notification.Metadata.GetValueOrDefault("turn_id"),
+                notification.Metadata.GetValueOrDefault("timestamp_source") == "original" ? notification.Timestamp : null);
         return Task.CompletedTask;
+    }
+    private async Task<DeliveryResult> SendPrivateFileAsync(string owner, string path, Notification notification, string replyId, CancellationToken ct)
+    {
+        var c = Config.Load();
+        if (!c.RemoteCodex.Enabled || c.RemoteCodex.OwnerId != owner || !c.Qq.Targets.Any(t => t.Id == owner && t.Kind == "c2c" && t.Enabled))
+            return new(false, notification.Id, "failed", "请先连接已绑定的本人 QQ。");
+        var clean = Sanitizer.Clean(notification); var key = Dispatcher.History.Begin(clean, "控制者私聊附件");
+        DeliveryResult result;
+        try
+        {
+            var target = new QqTarget { Id = owner, Kind = "c2c" };
+            var receipt = await Qq.SendFileAsync(target, path, ct, replyId);
+            await RememberReferenceAsync(target, clean, receipt); result = new(true, clean.Id, "sent");
+        }
+        catch (Exception e)
+        {
+            var failed = e is AppException error && (error.Code.StartsWith("QQ_4", StringComparison.Ordinal)
+                || error.Code.StartsWith("QQ_FILE_", StringComparison.Ordinal) || error.Code is "QQ_REPLY_LIMIT" or "QQ_NOT_CONFIGURED")
+                || e is FileNotFoundException or DirectoryNotFoundException or UnauthorizedAccessException;
+            result = new(false, clean.Id, failed ? "failed" : "uncertain", AppException.Describe(e));
+        }
+        Dispatcher.History.Complete(key, result.Status, result.Error); return result;
     }
     public async Task<DeliveryResult> SendAsync(Notification notification, CancellationToken ct = default)
     {

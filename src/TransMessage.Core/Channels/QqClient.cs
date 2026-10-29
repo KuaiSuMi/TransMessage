@@ -12,8 +12,8 @@ namespace TransMessage.Core.Channels;
 
 public sealed record QqSendReceipt(string Id, DateTimeOffset? Timestamp, string? ReferenceIndex);
 
-public sealed class QqClient(HttpClient http, Func<(string AppId, string Secret)> credentials, bool sandbox = false,
-    Uri? apiBase = null, Uri? tokenBase = null)
+public sealed partial class QqClient(HttpClient http, Func<(string AppId, string Secret)> credentials, bool sandbox = false,
+    Uri? apiBase = null, Uri? tokenBase = null, HttpClient? uploadHttp = null)
 {
     private Uri _api = apiBase ?? new(sandbox ? "https://sandbox.api.sgroup.qq.com/" : "https://api.bot.qq.com/");
     private readonly Uri _tokenBase = tokenBase ?? new("https://bots.qq.com/");
@@ -73,22 +73,38 @@ public sealed class QqClient(HttpClient http, Func<(string AppId, string Secret)
         var markdown = InteractiveText(text);
         var body = markdown is null ? new Dictionary<string, object> { ["content"] = text, ["msg_type"] = 0 }
             : new Dictionary<string, object> { ["markdown"] = new { content = markdown }, ["msg_type"] = 2 };
-        if (replyId is not null)
+        AddReply(body, target, replyId);
+        using var result = await RequestAsync(HttpMethod.Post, $"v2/{scope}/{Uri.EscapeDataString(target.Id)}/messages", body, ct);
+        return ReadReceipt(result.RootElement);
+    }
+
+    private void AddReply(Dictionary<string, object> body, QqTarget target, string? replyId)
+    {
+        if (replyId is null) return;
+        body["msg_id"] = replyId; body["msg_seq"] = ReplySequence(target, replyId, true);
+    }
+
+    private int ReplySequence(QqTarget target, string replyId, bool reserve)
+    {
+        lock (_replySequences)
         {
-            body["msg_id"] = replyId;
-            lock (_replySequences)
+            var cutoff = DateTimeOffset.UtcNow.AddHours(-2);
+            foreach (var key in _replySequences.Where(x => x.Value.Time < cutoff).Select(x => x.Key).ToArray()) _replySequences.Remove(key);
+            var keyForReply = (target.Kind, target.Id, replyId);
+            var sequence = _replySequences.GetValueOrDefault(keyForReply).Sequence + 1;
+            if (target.Kind == "c2c" && sequence > 4)
+                throw new AppException("QQ_REPLY_LIMIT", "这条 QQ 消息的回复次数已用完，请发送新消息继续。");
+            if (reserve)
             {
-                var cutoff = DateTimeOffset.UtcNow.AddHours(-2);
-                foreach (var key in _replySequences.Where(x => x.Value.Time < cutoff).Select(x => x.Key).ToArray()) _replySequences.Remove(key);
-                var keyForReply = (target.Kind, target.Id, replyId);
-                var sequence = _replySequences.GetValueOrDefault(keyForReply).Sequence + 1;
                 _replySequences[keyForReply] = (sequence, DateTimeOffset.UtcNow);
                 if (_replySequences.Count > 4096) _replySequences.Remove(_replySequences.MinBy(x => x.Value.Time).Key);
-                body["msg_seq"] = sequence;
             }
+            return sequence;
         }
-        using var result = await RequestAsync(HttpMethod.Post, $"v2/{scope}/{Uri.EscapeDataString(target.Id)}/messages", body, ct);
-        var root = result.RootElement;
+    }
+
+    private static QqSendReceipt ReadReceipt(JsonElement root)
+    {
         if (!root.TryGetProperty("id", out var id) || id.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(id.GetString()))
             throw new AppException("QQ_SEND_SCHEMA", "QQ 发送响应缺少消息标识；结果不确定，未自动重发。");
         var timestamp = root.TryGetProperty("timestamp", out var stamp) && stamp.ValueKind == JsonValueKind.String && stamp.TryGetDateTimeOffset(out var time) ? (DateTimeOffset?)time : null;
@@ -132,7 +148,7 @@ public sealed class QqClient(HttpClient http, Func<(string AppId, string Secret)
         }
     }
 
-    private async Task<JsonDocument> RequestAsync(HttpMethod method, string path, object? body, CancellationToken ct)
+    private async Task<JsonDocument> RequestAsync(HttpMethod method, string path, object? body, CancellationToken ct, int timeoutSeconds = 15)
     {
         for (var attempt = 0; attempt < 3; attempt++)
         {
@@ -142,7 +158,7 @@ public sealed class QqClient(HttpClient http, Func<(string AppId, string Secret)
             request.Headers.UserAgent.ParseAdd("TransMessage/" + BuildInfo.Version);
             if (body is not null) request.Content = JsonContent.Create(body);
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            timeout.CancelAfter(TimeSpan.FromSeconds(15));
+            timeout.CancelAfter(TimeSpan.FromSeconds(timeoutSeconds));
             HttpResponseMessage response;
             try { response = await http.SendAsync(request, timeout.Token); }
             catch (Exception e) when (e is HttpRequestException or OperationCanceledException && !ct.IsCancellationRequested)

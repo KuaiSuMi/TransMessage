@@ -47,7 +47,7 @@ public sealed class CodexRpc : IAsyncDisposable
             var native = Directory.EnumerateFiles(npm, "codex.exe", SearchOption.AllDirectories).FirstOrDefault();
             if (native is not null) return native;
         }
-        throw new AppException("CODEX_EXE", "未发现 Codex 原生程序。请安装 Codex 或选择 codex.exe；通知功能仍可独立使用。");
+        throw new AppException("CODEX_EXE", "请安装 Codex，或在设置中选择 codex.exe。");
     }
     public static async Task<CodexRpc> ConnectAsync(string executable, bool proxy, CancellationToken ct, string? codexHome = null)
     {
@@ -87,7 +87,7 @@ public sealed class CodexRpc : IAsyncDisposable
             await WriteAsync(new { id, method, @params = parameters }, ct);
             return await completion.Task.WaitAsync(TimeSpan.FromSeconds(20), ct);
         }
-        catch (TimeoutException) { throw new AppException("CODEX_TIMEOUT", "Codex 请求超时，执行结果可能不确定；未自动重试。"); }
+        catch (TimeoutException) { throw new AppException("CODEX_TIMEOUT", "Codex 请求超时，请在电脑查看执行状态。"); }
         finally { _pending.TryRemove(id, out _); }
     }
     public Task ReplyAsync(JsonElement id, object result, CancellationToken ct) => WriteAsync(new { id, result }, ct);
@@ -124,7 +124,7 @@ public sealed class CodexRpc : IAsyncDisposable
             _pending.Clear(); _messages.Writer.TryComplete();
         }
     }
-    private static AppException Disconnected() => new("CODEX_DISCONNECTED", "Codex 控制连接不可用。现有 Desktop 需要可连接的官方后台；不能以新进程冒充接管。");
+    private static AppException Disconnected() => new("CODEX_DISCONNECTED", "Codex 控制连接已断开，请在电脑重新连接。");
     public async ValueTask DisposeAsync()
     {
         if (Interlocked.Exchange(ref _disposed, 1) != 0) return;

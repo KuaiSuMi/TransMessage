@@ -9,6 +9,7 @@ TransMessage does not assign a license to the main repository. The following not
 | ASP.NET Core | .NET 10 | MIT and upstream notices | [dotnet/aspnetcore](https://github.com/dotnet/aspnetcore), `licenses/aspnetcore-MIT.txt`, `licenses/aspnetcore-THIRD-PARTY-NOTICES.txt` |
 | System.CommandLine | 2.0.12 | MIT | [dotnet/command-line-api](https://github.com/dotnet/command-line-api), `licenses/System.CommandLine-MIT.txt` |
 | Tomlyn | 2.10.1 | BSD-2-Clause | [xoofx/Tomlyn](https://github.com/xoofx/Tomlyn), `licenses/tomlyn-BSD-2-Clause.txt` |
+| Markdig | 1.4.2 | BSD-2-Clause | [xoofx/markdig](https://github.com/xoofx/markdig), `licenses/markdig-BSD-2-Clause.txt` |
 | Serilog | 4.4.0 | Apache-2.0 | [serilog/serilog](https://github.com/serilog/serilog), `licenses/serilog-Apache-2.0.txt` |
 | Serilog.Sinks.File | 7.0.0 | Apache-2.0 | [serilog/serilog-sinks-file](https://github.com/serilog/serilog-sinks-file), `licenses/serilog-sinks-file-Apache-2.0.txt` |
 | xUnit / adapter | 2.9.3 / 4.0.0 | Apache-2.0 | [xunit/xunit](https://github.com/xunit/xunit), development/test only |

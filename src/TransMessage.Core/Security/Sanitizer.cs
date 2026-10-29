@@ -16,12 +16,12 @@ public sealed class Sanitizer(Func<IEnumerable<string>>? knownSecrets = null)
         "(?im)[\"']?\\b[A-Z0-9_]*(?:password|passwd|pwd|secret|token|api[_-]?key|access[_-]?key|private[_-]?key)[A-Z0-9_]*[\"']?\\s*[:=]\\s*(?:\"[^\"]*\"|'[^']*'|[^\\s,;}]+)",
         RegexOptions.Compiled | RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(150));
 
-    public string Redact(string? input)
+    public string Redact(string? input, bool trim = true)
     {
         var value = input ?? "";
         foreach (var secret in knownSecrets?.Invoke() ?? [])
             if (!string.IsNullOrEmpty(secret)) value = value.Replace(secret, "[REDACTED]", StringComparison.Ordinal);
-        try { return Secrets.Replace(value, "[REDACTED]").Replace("\0", "", StringComparison.Ordinal).Trim(); }
+        try { value = Secrets.Replace(value, "[REDACTED]").Replace("\0", "", StringComparison.Ordinal); return trim ? value.Trim() : value; }
         catch (RegexMatchTimeoutException) { return "[内容因脱敏超时而省略]"; }
     }
     public Notification Clean(Notification n) => n with
@@ -30,7 +30,7 @@ public sealed class Sanitizer(Func<IEnumerable<string>>? knownSecrets = null)
         Message = Truncate(Redact(n.Message), 3000),
         Device = Redact(n.Device),
         Source = Redact(n.Source),
-        Tags = n.Tags.Select(Redact).ToArray(),
+        Tags = n.Tags.Select(t => Redact(t)).ToArray(),
         Metadata = n.Metadata.ToDictionary(p => p.Key, p => Redact(p.Value))
     };
     public static string Truncate(string value, int maxChars)

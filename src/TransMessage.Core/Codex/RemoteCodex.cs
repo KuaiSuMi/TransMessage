@@ -20,7 +20,9 @@ public sealed record PendingInput(string Code, string ThreadId, string TurnId, s
 public sealed partial class RemoteCodex(ConfigStore config, Sanitizer sanitizer,
     Func<string, Notification, string?, CancellationToken, Task<DeliveryResult>> send,
     Func<RemoteCodexSettings, CancellationToken, Task<CodexRpc>>? connect = null,
-    QqImageCache? imageCache = null) : IAsyncDisposable
+    QqImageCache? imageCache = null,
+    Func<string, string, Notification, string, CancellationToken, Task<DeliveryResult>>? sendFile = null,
+    Func<string, CancellationToken, Task>? wakeDesktop = null) : IAsyncDisposable
 {
     private sealed record Request(PendingInput View, JsonElement Id, TaskCompletionSource<bool> Resolved);
     private readonly ConcurrentDictionary<string, Request> _requests = new();
@@ -30,6 +32,7 @@ public sealed partial class RemoteCodex(ConfigStore config, Sanitizer sanitizer,
     private readonly SemaphoreSlim _commands = new(1, 1);
     private readonly Channel<QqPrivateMessage> _inbox = Channel.CreateBounded<QqPrivateMessage>(32);
     private readonly Channel<(string Owner, Notification Notification, string? ReplyId)> _notices = Channel.CreateBounded<(string, Notification, string?)>(64);
+    private readonly Channel<(RoutedMessage Route, QqPrivateMessage Message)> _exports = Channel.CreateBounded<(RoutedMessage, QqPrivateMessage)>(8);
     private readonly DedupStore _dedup = new(config.Paths);
     private readonly QqReferenceStore _references = new(config.Paths);
     private readonly QqImageCache _images = imageCache ?? new(config.Paths);
@@ -37,6 +40,7 @@ public sealed partial class RemoteCodex(ConfigStore config, Sanitizer sanitizer,
     private Task? _events;
     private Task? _receiving;
     private Task? _delivering;
+    private Task? _exporting;
     private CodexRpc? _rpc;
     private string? _settings;
     private string _owner = "";
@@ -61,6 +65,7 @@ public sealed partial class RemoteCodex(ConfigStore config, Sanitizer sanitizer,
             // These loops must finish even after the GUI dispatcher has stopped.
             var rpc = _rpc; var token = _stop.Token;
             _events = Task.Run(() => ListenAsync(rpc, token)); _receiving = Task.Run(() => ReceiveAsync(token)); _delivering = Task.Run(() => DeliverAsync(token));
+            _exporting = Task.Run(() => ExportAsync(token));
         }
         catch (Exception e) { Status = AppException.Describe(e); throw; }
     }
@@ -89,19 +94,19 @@ public sealed partial class RemoteCodex(ConfigStore config, Sanitizer sanitizer,
             if (!Authorized(message.Sender) || message.Time < DateTimeOffset.UtcNow.AddMinutes(-5) || message.Time > DateTimeOffset.UtcNow.AddMinutes(1)) return;
             if (DateTimeOffset.UtcNow - _rateStart > TimeSpan.FromMinutes(1)) { _rateStart = DateTimeOffset.UtcNow; _rateCount = 0; }
             if (++_rateCount > 12 || !_dedup.Reserve($"qq-command:{config.Load().Qq.AppId}:{message.Sender}:{message.Id}")) return;
-            string response; RoutedMessage route = new("", message.Text, null, null);
+            string? response; RoutedMessage route = new("", message.Text, null, null);
             try
             {
                 if (message.InputError is not null) throw new AppException("CONTROL_MESSAGE", message.InputError);
                 route = await RouteAsync(message, ct); response = await ExecuteAsync(route, message, ct);
             }
             catch (Exception e) { response = AppException.Describe(e); }
-            if (Authorized(message.Sender)) await NotifyAsync(message.Sender, route.Thread is { } thread ? $"Codex · #{thread.Id[^12..]} · {TaskName.Short(thread.Name, sanitizer)}" : "Codex 私聊回复", response, message.Id, ct, message.Time, route.Thread?.Id, route.QuestionCode);
+            if (response is not null && Authorized(message.Sender)) await NotifyAsync(message.Sender, route.Thread is { } thread ? $"Codex · #{thread.Id[^12..]} · {TaskName.Short(thread.Name, sanitizer)}" : "Codex 私聊回复", response, message.Id, ct, message.Time, route.Thread?.Id, route.QuestionCode);
         }
         catch (Exception e) when (e is AppException or IOException or OperationCanceledException) { Status = AppException.Describe(e); }
         finally { _commands.Release(); }
     }
-    private CodexRpc Rpc() => _rpc is { IsConnected: true } rpc ? rpc : throw new AppException("CONTROL_OFFLINE", "Codex 控制连接已断开，请在电脑重新连接。未自动重放任何指令。");
+    private CodexRpc Rpc() => _rpc is { IsConnected: true } rpc ? rpc : throw new AppException("CONTROL_OFFLINE", "Codex 控制连接已断开，请在电脑重新连接。");
     private async Task ListenAsync(CodexRpc rpc, CancellationToken ct)
     {
         try
@@ -128,7 +133,7 @@ public sealed partial class RemoteCodex(ConfigStore config, Sanitizer sanitizer,
                         _requests[pending.Code] = new(pending, requestId.Clone(), new(TaskCreationOptions.RunContinuationsAsynchronously));
                         await NotifyAsync(_owner, $"Codex 等待你 · #{threadId![^12..]}", Describe(pending), null, ct, threadId: threadId, questionCode: pending.Code);
                     }
-                    else { await rpc.RejectAsync(requestId, ct); await NotifyAsync(_owner, $"Codex 请求无法远程处理 · #{threadId![^12..]}", "此类请求未获支持，已拒绝。请在电脑查看并调整任务。", null, ct, threadId: threadId); }
+                    else { await rpc.RejectAsync(requestId, ct); await NotifyAsync(_owner, $"Codex 请求需电脑处理 · #{threadId![^12..]}", "请求已拒绝，请在电脑查看并调整任务。", null, ct, threadId: threadId); }
                 }
                 else if (method == "item/completed" && data.TryGetProperty("item", out var item) && CodexEvents.Text(item, "type") == "agentMessage")
                     _lastResults[threadId!] = Sanitizer.Truncate(sanitizer.Redact(CodexEvents.Text(item, "text")), 900);
@@ -141,7 +146,7 @@ public sealed partial class RemoteCodex(ConfigStore config, Sanitizer sanitizer,
                     if (turn.ValueKind == JsonValueKind.Object && turn.TryGetProperty("completedAt", out var stamp) && stamp.ValueKind == JsonValueKind.Number && stamp.TryGetInt64(out var seconds)
                         && seconds >= DateTimeOffset.MinValue.ToUnixTimeSeconds() && seconds <= DateTimeOffset.MaxValue.ToUnixTimeSeconds())
                         completedAt = DateTimeOffset.FromUnixTimeSeconds(seconds);
-                    await NotifyAsync(_owner, $"Codex 本轮结束 · #{threadId![^12..]}", $"{TaskName.Short(allowed.Name, sanitizer)}\n状态：{state}\n{_lastResults.GetValueOrDefault(threadId!, "无结果摘要")}\n\n引用此消息直接回复，或发送 #{threadId![^12..]} 下一步要求", null, ct, completedAt, threadId);
+                    await NotifyAsync(_owner, $"Codex 本轮结束 · #{threadId![^12..]}", $"{TaskName.Short(allowed.Name, sanitizer)}\n状态：{state}\n{_lastResults.GetValueOrDefault(threadId!, "无结果摘要")}\n\n引用此消息回复下一步，或用 /full 获取全文、/file 获取附件。", null, ct, completedAt, threadId, turnId: CodexEvents.Text(turn, "id"));
                 }
             }
         }
@@ -162,7 +167,7 @@ public sealed partial class RemoteCodex(ConfigStore config, Sanitizer sanitizer,
                 questions.Add(new(CodexEvents.Text(q, "id") ?? throw new JsonException(), sanitizer.Redact(CodexEvents.Text(q, "question")), options, secret));
             }
         }
-        var raw = method == "item/commandExecution/requestApproval" ? $"命令：{CodexEvents.Text(data, "command")}\n目录：{CodexEvents.Text(data, "cwd")}\n原因：{CodexEvents.Text(data, "reason")}" : "文件修改请求；完整差异请在电脑核对。本版不远程批准缺少差异的请求。";
+        var raw = method == "item/commandExecution/requestApproval" ? $"命令：{CodexEvents.Text(data, "command")}\n目录：{CodexEvents.Text(data, "cwd")}\n原因：{CodexEvents.Text(data, "reason")}" : "文件修改请求，请在电脑核对完整差异并批准。";
         var summary = questions.Count > 0 ? "需要补充信息" : sanitizer.Redact(raw);
         var approve = method == "item/commandExecution/requestApproval" && !string.IsNullOrEmpty(CodexEvents.Text(data, "command")) && raw.Length <= 1200 && summary == raw
             && (!data.TryGetProperty("additionalPermissions", out var permissions) || permissions.ValueKind == JsonValueKind.Null)
@@ -180,19 +185,19 @@ public sealed partial class RemoteCodex(ConfigStore config, Sanitizer sanitizer,
         foreach (var q in pending.Questions.Select((q, i) => (q, i)))
             text += $"\n{q.i + 1}. {(q.q.Secret ? "敏感问题，请在电脑回答" : q.q.Text)}" + (q.q.Secret ? "" : string.Concat(q.q.Options.Select((o, i) => $"\n  {i + 1}) {o}")));
         return text + (pending.Questions.Length > 0 ? $"\n回答 {pending.Code} 答案" + (pending.Questions.Length > 1 ? "1 | 答案2（按问题顺序）" : "（可填选项编号）")
-            : pending.CanApprove ? $"\n批准 {pending.Code} / 拒绝 {pending.Code}（仅本次）" : $"\n仅允许拒绝 {pending.Code}，不能远程批准。");
+            : pending.CanApprove ? $"\n批准 {pending.Code} / 拒绝 {pending.Code}（仅本次）" : $"\n请在电脑批准，或回复 拒绝 {pending.Code}。");
     }
     public async Task AnswerAsync(string code, string answer, bool local, CancellationToken ct = default)
     {
         code = code.ToUpperInvariant();
         if (!_requests.TryGetValue(code, out var request) || request.View.ExpiresAt < DateTimeOffset.UtcNow)
-            throw new AppException("CONTROL_EXPIRED", "问题已结束、过期或连接已更换；未发送回答。");
+            throw new AppException("CONTROL_EXPIRED", "问题已结束、过期或连接已更换，请查看最新问题通知。");
         if (!Authorized(_owner)) throw new AppException("CONTROL_OWNER", "控制授权已撤销。");
         _ = await ResolveAsync(request.View.ThreadId, ct);
         object result;
         if (request.View.Questions.Length > 0)
         {
-            if (!local && request.View.Questions.Any(q => q.Secret)) throw new AppException("CONTROL_SECRET", "敏感问题只能在电脑回答，请勿通过 QQ 发送凭证。");
+            if (!local && request.View.Questions.Any(q => q.Secret)) throw new AppException("CONTROL_SECRET", "请在电脑回答此敏感问题。");
             var parts = answer.Split('|', StringSplitOptions.TrimEntries);
             if (parts.Length != request.View.Questions.Length || parts.Any(string.IsNullOrWhiteSpace) || answer.Length > 6000)
                 throw new AppException("CONTROL_ANSWER", "请按顺序回答全部问题，多个答案用 | 分隔。");
@@ -207,7 +212,7 @@ public sealed partial class RemoteCodex(ConfigStore config, Sanitizer sanitizer,
         }
         else
         {
-            if (answer is not ("accept" or "decline") || answer == "accept" && !request.View.CanApprove) throw new AppException("CONTROL_APPROVAL", "该请求只能拒绝，或需要在电脑查看完整内容。");
+            if (answer is not ("accept" or "decline") || answer == "accept" && !request.View.CanApprove) throw new AppException("CONTROL_APPROVAL", "请按通知指引批准或拒绝；需要核对完整内容的请求请在电脑批准。");
             result = new { decision = answer };
         }
         if (!_requests.TryRemove(code, out _)) throw new AppException("CONTROL_EXPIRED", "此问题已被处理。");
@@ -216,17 +221,18 @@ public sealed partial class RemoteCodex(ConfigStore config, Sanitizer sanitizer,
         try
         {
             await Rpc().ReplyAsync(request.Id, result, ct);
-            if (!await request.Resolved.Task.WaitAsync(TimeSpan.FromSeconds(10), ct)) throw new AppException("CONTROL_EXPIRED", "问题已由其他操作结束，回答未确认。");
+            if (!await request.Resolved.Task.WaitAsync(TimeSpan.FromSeconds(10), ct)) throw new AppException("CONTROL_EXPIRED", "问题已由其他操作结束。");
         }
-        catch (TimeoutException) { throw new AppException("CONTROL_ANSWER_UNCERTAIN", "回答已发出，但未收到 Codex 确认；请查询任务状态，不要重复批准。"); }
+        catch (TimeoutException) { throw new AppException("CONTROL_ANSWER_UNCERTAIN", "回答已发出，确认结果暂不可用。请查询任务状态。"); }
         finally { _requests.TryRemove(ackKey, out _); }
     }
-    private Task NotifyAsync(string owner, string title, string text, string? replyId, CancellationToken ct, DateTimeOffset? originalTimestamp = null, string? threadId = null, string? questionCode = null)
+    private Task NotifyAsync(string owner, string title, string text, string? replyId, CancellationToken ct, DateTimeOffset? originalTimestamp = null, string? threadId = null, string? questionCode = null, string? turnId = null)
     {
         if (!Authorized(owner) || ct.IsCancellationRequested) return Task.CompletedTask;
         var metadata = new Dictionary<string, string> { ["timestamp_source"] = originalTimestamp.HasValue ? "original" : "received" };
         if (threadId is not null) metadata["thread_id"] = threadId;
         if (questionCode is not null) metadata["question_code"] = questionCode;
+        if (turnId is not null) metadata["turn_id"] = turnId;
         var notification = sanitizer.Clean(new Notification
         {
             Title = title,
@@ -261,12 +267,13 @@ public sealed partial class RemoteCodex(ConfigStore config, Sanitizer sanitizer,
         if (_stop is not null) await _stop.CancelAsync();
         ClearRequests(null);
         if (_rpc is not null) await _rpc.DisposeAsync();
-        foreach (var task in new[] { _events, _receiving, _delivering }) if (task is not null) { try { await task; } catch (OperationCanceledException) { } }
+        foreach (var task in new[] { _events, _receiving, _delivering, _exporting }) if (task is not null) { try { await task; } catch (OperationCanceledException) { } }
         _rpc = null; _stop?.Dispose(); _stop = null;
         _loaded.Clear(); _running.Clear(); _lastResults.Clear();
         _drafts.Clear();
         while (_inbox.Reader.TryRead(out _)) { }
         while (_notices.Reader.TryRead(out _)) { }
+        while (_exports.Reader.TryRead(out _)) { }
     }
     public async ValueTask DisposeAsync() { await StopAsync(); _images.Dispose(); }
 }

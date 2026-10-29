@@ -58,7 +58,7 @@ public partial class MainWindow
     {
         Heading("在 QQ，接着做", "引用通知即可回复，也可直接带上会话编号。图片与文字可以分开发送，再一起提交。");
         var c = _app.Config.Load(); var settings = c.RemoteCodex;
-        var connection = Card("控制连接", "只接受你选定的 QQ 私聊控制者。会话无需逐个授权，群消息不会启动任务。");
+        var connection = Card("控制连接", "选择一个已绑定的 QQ 私聊目标，即可控制本机 Codex 会话。会话无需逐个授权。");
         var enabled = Check(connection, "启用 QQ 私聊控制", settings.Enabled);
         connection.Children.Add(Text("谁可以控制", false));
         var owners = c.Qq.Targets.Where(t => t.Kind == "c2c" && t.Enabled).ToArray();
@@ -79,7 +79,7 @@ public partial class MainWindow
         Button(buttons, "检测现有 Desktop", async () => Feedback(await _app.Remote.ProbeDesktopAsync()));
         State(connection, "remote", "当前连接"); State(connection, "questions", "等待回答");
 
-        var threads = Card("你的会话", "现有 Desktop 与实时问答会话放在一起。共享队列中的消息仍需 Desktop 处理，不能据此确认已经执行。");
+        var threads = Card("你的会话", "回复 Desktop 会话时，消息加入共享队列，并在后台唤醒原会话。实时问答会话由 TransMessage 运行。");
         var threadList = new StackPanel(); threads.Children.Add(threadList);
         void ShowThreads(IReadOnlyList<CodexTaskInfo> rows)
         {
@@ -102,15 +102,19 @@ public partial class MainWindow
         Button(Actions(threads), "刷新会话", async () => { ShowThreads(await _app.Remote.TasksAsync()); Feedback("会话已刷新，可直接引用通知或使用编号回复。"); });
 
         var draft = Card("图文一起发", "先引用一条会话通知，再发送 /d（也支持 /draft）。随后分开发送图片和文字，最后用 /s 一起提交；/c 取消草稿。");
-        draft.Children.Add(Text("不引用消息时，发送 /d #会话编号。草稿固定属于该会话，不会随其他会话的通知切换。"));
+        draft.Children.Add(Text("也可发送 /d #会话编号。开始后，图文会保存在该会话的草稿里。"));
         draft.Children.Add(Text("实时问答会话支持 /model 和 /reasoning，设置从下一轮生效。现有 Desktop 的模型设置与实时问题仍需在原窗口处理。"));
+
+        var result = Card("读全文，取文件", "引用完成通知，发送 /full 阅读完整回复，发送 /file 取回这一轮的附件。");
+        result.Children.Add(Text("/full 每页最多 4 段；/file 每页是一份清单和最多 3 个附件。按消息提示发送 /full 2 或 /file 2 继续，也可引用刚收到的全文或附件消息。"));
+        result.Children.Add(Text("附件来自该轮最终回复中的本地文件和图片链接。回复与文件清单保留原始北京时间，精确到秒。"));
 
         var create = Card("新建实时问答会话", "需要在 QQ 回答问题或调整模型时，由 TransMessage 创建并运行会话。退出或停用控制会结束托管进程。");
         var name = Field(create, "会话名称", "我的远程任务"); var directory = Field(create, "项目目录", "");
         var createActions = Actions(create);
         Action(createActions, "选择项目目录…", () => { var dialog = new OpenFolderDialog(); if (dialog.ShowDialog(this) == true) directory.Text = dialog.FolderName; });
         Button(createActions, "创建会话", async () => { var thread = await _app.Remote.CreateManagedAsync(directory.Text, name.Text); Feedback($"会话 #{thread.Id[^12..]} 已创建。在 QQ 发送“#{thread.Id[^12..]} 你的要求”。"); ReloadPage(); });
-        var pending = Card("等待你的回答", "问题码只对当前会话、当前请求有效。连接断开或问题已结束后，旧回答不会用于新的请求。有效期 15 分钟。");
+        var pending = Card("等待你的回答", "引用问题通知直接回答，也可使用问题码。问题码 15 分钟有效，当前轮次结束或连接变更后失效。");
         Action(Actions(pending), "刷新待回答问题", ReloadPage);
         foreach (var request in _app.Remote.Pending)
         {
@@ -132,7 +136,7 @@ public partial class MainWindow
                 Button(actions, "拒绝本次", async () => { await _app.Remote.AnswerAsync(request.Code, "decline", true); ReloadPage(); });
             }
         }
-        if (_app.Remote.Pending.Count == 0) pending.Children.Add(Text("当前没有待回答问题。共享队列会话无法读取现有 Desktop 窗口里的实时问题。"));
+        if (_app.Remote.Pending.Count == 0) pending.Children.Add(Text("当前没有待回答问题。"));
         var commands = Card("在 QQ 中这样说"); Code(commands, RemoteCodex.Help);
     }
 }

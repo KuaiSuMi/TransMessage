@@ -1,5 +1,14 @@
 # 研究与取舍
 
+## 0.3.2 后台唤醒和文件（2026-10-29）
+
+- 当前 Desktop 26.1021.3705.0 安装代码包含 `codex://threads/wake/<uuid>` 后台入口。原宿主读取共享队列并继续会话，不导航到目标页面。独立辅助进程不能直接启动未由自己恢复的队列；因此只负责 `thread/queue/add`，随后交给原 Desktop。唤醒入口来自本机版本核查，公开文档尚未承诺此入口长期稳定。
+- Windows MSIX 程序通过 [IApplicationActivationManager.ActivateApplication](https://learn.microsoft.com/en-us/windows/win32/api/shobjidl_core/nf-shobjidl_core-iapplicationactivationmanager-activateapplication) 激活，从运行进程读取 AUMID，不使用直接启动受限的包内 exe。实机已验证队列消费、完整回复与前台不变，见验收记录。
+- 当前原生 schema 与实测支持 `thread/items/list {threadId,turnId,cursor,limit,sortDirection}`；采用按轮分页读取，避免将完整会话历史一次载入。QQ 引用关联持久保存准确轮次与原始时间。
+- QQ [单聊文件上传](https://bot.q.qq.com/wiki/develop/api-v2/autogen/api/v2_users_user_openid_files.post.html) 使用 `file_type=4`、`file_data` 或 `upload_id`、`srv_send_msg=false`；再通过 `msg_type=7` 发送文件卡片。大文件遵循 `upload_prepare`、预签名 HTTPS PUT、[upload_part_finish](https://bot.q.qq.com/wiki/develop/api-v2/autogen/api/v2_users_user_id_upload_part_finish.post.html)。`part_index` 为整数，`block_size` 为字符串。
+- 腾讯官方 SDK 的本地文件直传采用 Base64。私聊每条接收消息最多被动回复 4 次，文本与文件共享序号；因此全文每页最多 4 段，附件每页 1 条清单加 3 个文件，下一页使用新的 QQ 消息。
+- 使用 Markdig 1.4.2 解析 CommonMark 文件链接，许可证随包分发；没有自制 Markdown 解析器。
+
 ## 0.3.1 编号交互核查（2026-10-29）
 
 [官方文本交互](https://bot.q.qq.com/wiki/develop/api-v2/server-inter/message/trans/text-chain.html)支持在 Markdown 中使用 `qqbot-cmd-input`，点击后填入输入框，由用户编辑发送。text/show 属性做 URL 编码，reference=false；本版仅为匹配的 12 位会话编号生成标签，其余正文转义为文字，不解释模型输出中的指令标签、Markdown 链接或图片，也不额外截断审批正文。
@@ -55,6 +64,7 @@
 |---|---|---|---|
 | .NET / WPF / ASP.NET Core | 10.0，自包含 | dotnet/runtime 2026-09-17 | Windows GUI、进程、文件、HTTP、WebSocket；MIT |
 | Tomlyn | 2.10.1 | xoofx/Tomlyn 2026-08-18 | TOML 语法树和序列化；BSD-2-Clause |
+| Markdig | 1.4.2 | 2026-10-19 release | CommonMark 附件链接解析；BSD-2-Clause |
 | System.CommandLine | 2.0.12 | dotnet/command-line-api 2026-09-17 | CLI 解析；MIT |
 | Serilog | 4.4.0 | serilog/serilog 2026-09-13 | 结构化日志；Apache-2.0 |
 | Serilog.Sinks.File | 7.0.0 | serilog/serilog-sinks-file 2026-07-16 | 滚动文件日志；Apache-2.0 |

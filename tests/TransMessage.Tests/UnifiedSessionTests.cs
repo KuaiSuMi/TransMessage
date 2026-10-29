@@ -34,7 +34,7 @@ public sealed class UnifiedSessionTests
             if (managed) c.RemoteCodex.Threads.Add(new() { Id = ManagedId, Name = "托管任务", Managed = true });
         });
         return new(data.Config, new(), (_, notification, _, _) => Task.FromResult(new DeliveryResult(true, notification.Id, "sent")),
-            async (_, ct) => { await server.Client.InitializeAsync(ct); return server.Client; });
+            async (_, ct) => { await server.Client.InitializeAsync(ct); return server.Client; }, wakeDesktop: (_, _) => Task.CompletedTask);
     }
 
     [Fact]
@@ -162,6 +162,8 @@ public sealed class UnifiedSessionTests
         public CodexRpc Client { get; }
         public object[][] Pages { get; set; } = [[]];
         public bool RepeatCursor { get; set; }
+        public string? RejectMethod { get; set; }
+        public Func<string, JsonElement, object?>? ReplyResult { get; set; }
         public ConcurrentQueue<JsonElement> Calls { get; } = new();
         public ConcurrentQueue<JsonElement> Replies { get; } = new();
         private SessionServer(TcpClient client, TcpClient peer)
@@ -223,8 +225,14 @@ public sealed class UnifiedSessionTests
                         continue;
                     }
                     Calls.Enqueue(call.Clone()); var method = methodElement.GetString(); var parameters = call.GetProperty("params");
+                    if (method == RejectMethod)
+                    {
+                        await SendAsync(new { id, error = new { code = -32600, message = "Fixture rejected request" } });
+                        continue;
+                    }
                     object result;
-                    if (method == "thread/list")
+                    if (ReplyResult?.Invoke(method!, parameters) is { } custom) result = custom;
+                    else if (method == "thread/list")
                     {
                         var index = parameters.TryGetProperty("cursor", out var cursor) && cursor.ValueKind == JsonValueKind.String ? 1 : 0;
                         result = new { data = Pages[Math.Min(index, Pages.Length - 1)], nextCursor = RepeatCursor || index + 1 < Pages.Length ? "page-2" : null };

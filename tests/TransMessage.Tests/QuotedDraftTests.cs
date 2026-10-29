@@ -19,7 +19,7 @@ public sealed class QuotedDraftTests
     public async Task QuotedDraftCombinesTextAndImageInEitherOrderAndSubmitsOnce(string command, bool imageFirst)
     {
         await using var h = await Harness.CreateAsync();
-        Assert.Contains("尚未提交", (await h.PostAsync(command, "first")).Message);
+        Assert.Contains("草稿已收 0 字、0 张图片", (await h.PostAsync(command, "first")).Message);
         if (imageFirst) { await h.PostAsync("", image: true); await h.PostAsync("修复截图里的按钮"); }
         else { await h.PostAsync("修复截图里的按钮"); await h.PostAsync("", image: true); }
         Assert.Empty(h.Turns);
