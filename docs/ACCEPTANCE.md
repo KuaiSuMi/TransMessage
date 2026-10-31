@@ -1,4 +1,17 @@
-# 0.3.4 QQ 项目列表与新建会话验收
+# 0.3.5 运行中闪退修复验收
+
+日期：2026-11-01（Asia/Shanghai）。用户反馈运行一段时间后自动退出；排查时 0.3.4 未运行，原事故没有对应 Windows 崩溃记录。重新启动后 QQ、API、下载和 Codex 监听正常。
+
+- 在独立数据目录运行原版 0.3.4，分别删除 Codex sessions 目录和下载监控目录，两种场景均产生未处理的 `DirectoryNotFoundException` 并结束进程。Windows .NET Runtime 1026 记录定位到 `CodexSessionWatcher.Rescan` 和 `StableFileWatcher` 的错误回调。证据：`artifacts/crash-v035/reproduced-crashes.json`、`artifacts/test-results/crash-before.trx`。
+- 修复错误类型区分：仅缓冲溢出触发补扫；目录失效显示监听已停止。补扫捕获目录不可访问异常，避免从系统回调传播到整个进程。
+- 新增两项真实子进程回归：删除监控目录后进程存活、状态可查、窗口可打开，恢复目录并重新应用设置后恢复监听，最后正常退出。启动、退出请求、异常类型及调用栈记录到日志；不记录异常消息中的外部内容。
+- `scripts/verify.ps1` 通过 269 项测试、锁定还原、格式检查、零警告构建、34 张 WPF 渲染及依赖审计。证据：`artifacts/crash-v035/verify.log`、`artifacts/test-results/verified.trx`。
+
+原事故缺少调用栈，目前确认修复的是已复现的目录监听闪退；长时间挂机的实际表现仍待观察。
+
+---
+
+## 0.3.4 QQ 项目列表与新建会话验收
 
 日期：2026-10-29（Asia/Shanghai）。新增 `/p`（`项目`）分页查看已有 Codex Desktop 项目，以及 `/new 项目编号 [首条要求]`（`新建`）创建实时问答会话。每页 8 个项目，编号沿用当前列表快照；新会话关联所选项目及全部工作目录。
 

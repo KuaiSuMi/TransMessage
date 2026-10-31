@@ -28,7 +28,13 @@ public sealed class CodexSessionWatcher(ConfigStore config, Func<Notification, C
         if (!Directory.Exists(directory)) { Status = "未发现 Codex sessions 目录；运行一次 Codex 后重启后台。"; return; }
         _watcher = new(directory, "*.jsonl") { IncludeSubdirectories = true, NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName | NotifyFilters.Size };
         _watcher.Changed += OnChange; _watcher.Created += OnChange; _watcher.Renamed += OnChange;
-        _watcher.Error += (_, _) => { Status = "会话事件缓冲溢出，正在重新扫描"; Rescan(directory); };
+        _watcher.Error += (_, e) =>
+        {
+            logger.Warning("Codex watcher failed: {Kind}", e.GetException().GetType().Name);
+            if (e.GetException() is InternalBufferOverflowException)
+            { Status = "会话事件缓冲溢出，正在重新扫描"; Rescan(directory); }
+            else Status = "会话目录监听已停止；恢复目录后重新应用 Codex 设置。";
+        };
         var existing = Directory.EnumerateFiles(directory, "*.jsonl", SearchOption.AllDirectories).OrderByDescending(File.GetLastWriteTimeUtc).Take(200)
             .Select(path => (Path: path, Length: new FileInfo(path).Length)).ToArray();
         _watcher.EnableRaisingEvents = true;
@@ -49,8 +55,16 @@ public sealed class CodexSessionWatcher(ConfigStore config, Func<Notification, C
     }
     private void Rescan(string directory)
     {
-        foreach (var path in Directory.EnumerateFiles(directory, "*.jsonl", SearchOption.AllDirectories).OrderByDescending(File.GetLastWriteTimeUtc).Take(200))
-            _dirty.TryAdd(path, 0);
+        try
+        {
+            foreach (var path in Directory.EnumerateFiles(directory, "*.jsonl", SearchOption.AllDirectories).OrderByDescending(File.GetLastWriteTimeUtc).Take(200))
+                _dirty.TryAdd(path, 0);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            Status = "会话目录扫描失败；确认目录可访问后重新应用 Codex 设置。";
+            logger.Warning("Codex rescan failed: {Kind}", e.GetType().Name);
+        }
         _signal.Writer.TryWrite(true);
     }
     private void OnChange(object sender, FileSystemEventArgs e)

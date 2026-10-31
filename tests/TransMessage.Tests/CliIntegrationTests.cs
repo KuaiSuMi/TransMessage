@@ -58,6 +58,62 @@ public sealed class CliIntegrationTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
+    public async Task BackgroundSurvivesWatchedDirectoryRemoval(bool codex)
+    {
+        using var data = new TestData();
+        var home = Path.Combine(data.Paths.Root, "codex");
+        var watched = Path.Combine(home, "sessions"); Directory.CreateDirectory(watched);
+        data.Config.Update(c =>
+        {
+            c.Codex.Enabled = codex; c.Downloads.Enabled = !codex; c.Downloads.AutoDownloads = false;
+            c.Downloads.Directories = [watched]; c.Update.Check = false; c.Server.Enabled = false;
+        });
+        var start = new ProcessStartInfo(Exe) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardError = true };
+        start.Environment["CODEX_HOME"] = home;
+        foreach (var arg in new[] { "--data-dir", data.Paths.Root, "--background" }) start.ArgumentList.Add(arg);
+        using var process = Process.Start(start)!; var error = process.StandardError.ReadToEndAsync();
+        var pipe = new InstancePipe(data.Paths);
+        try
+        {
+            var ready = false;
+            for (var i = 0; i < 40; i++)
+            {
+                var status = await pipe.TrySendAsync(new("status"));
+                if (status?.Message.Contains(codex ? "当前会话格式" : "正在监控 1 个目录", StringComparison.Ordinal) == true) { ready = true; break; }
+                Assert.False(process.HasExited); await Task.Delay(150);
+            }
+            Assert.True(ready);
+            Directory.Delete(watched);
+            var reported = false;
+            for (var i = 0; i < 40; i++)
+            {
+                Assert.False(process.HasExited, process.HasExited ? await error : "");
+                if ((await pipe.TrySendAsync(new("status")))?.Message.Contains("监听已停止", StringComparison.Ordinal) == true) { reported = true; break; }
+                await Task.Delay(150);
+            }
+            Assert.True(reported);
+            Assert.True((await pipe.TrySendAsync(new("show")))?.Ok);
+            Directory.CreateDirectory(watched);
+            Assert.True((await pipe.TrySendAsync(new("reload")))?.Ok);
+            var restored = false;
+            for (var i = 0; i < 40; i++)
+            {
+                var status = await pipe.TrySendAsync(new("status"));
+                if (status?.Message.Contains(codex ? "当前会话格式" : "正在监控 1 个目录", StringComparison.Ordinal) == true) { restored = true; break; }
+                await Task.Delay(150);
+            }
+            Assert.True(restored);
+            Assert.True((await pipe.TrySendAsync(new("stop")))?.Ok);
+            await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(15)); Assert.Equal(0, process.ExitCode);
+            var log = string.Join("\n", Directory.EnumerateFiles(data.Paths.Logs).Select(File.ReadAllText));
+            Assert.Contains("GUI started", log); Assert.Contains("GUI exit requested", log); Assert.Contains("GUI stopped", log);
+        }
+        finally { if (!process.HasExited) { process.Kill(true); await process.WaitForExitAsync(); } }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
     public async Task PublishedBackgroundIsSingleInstanceAndStopsCleanly(bool remoteEnabled)
     {
         using var data = new TestData();

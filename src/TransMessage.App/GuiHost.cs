@@ -22,56 +22,69 @@ internal static class GuiHost
         {
             using var stop = new CancellationTokenSource();
             var runtime = new AppRuntime(paths);
-            if (!File.Exists(paths.Config)) runtime.Config.Save(runtime.Config.Load());
-            var application = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
-            application.Resources.MergedDictionaries.Add(new ResourceDictionary { Source = new Uri("/TransMessage;component/Theme.xaml", UriKind.Relative) });
-            var window = new MainWindow(runtime);
-            application.MainWindow = window;
-            using var tray = new Forms.NotifyIcon
+            void LogFailure(string source, Exception error) => runtime.Log.Error("GUI failure: {Source} {Kind}\n{Stack}", source, error.GetType().FullName, error.StackTrace);
+            UnhandledExceptionEventHandler fatal = (_, e) =>
             {
-                Text = "TransMessage · 任务完成通知",
-                Visible = true,
-                Icon = System.Drawing.Icon.ExtractAssociatedIcon(WindowsIntegration.Executable) ?? System.Drawing.SystemIcons.Information
+                if (e.ExceptionObject is Exception error) LogFailure("unhandled", error);
             };
-            var menu = new Forms.ContextMenuStrip();
-            void Show() => application.Dispatcher.Invoke(() => { window.Show(); if (window.WindowState == WindowState.Minimized) window.WindowState = WindowState.Normal; window.Activate(); });
-            void Exit() { window.Exiting = true; application.Shutdown(); }
-            menu.Items.Add("打开 TransMessage", null, (_, _) => Show());
-            menu.Items.Add("发送测试通知", null, async (_, _) => await window.ExecuteAsync(async () =>
+            AppDomain.CurrentDomain.UnhandledException += fatal;
+            try
             {
-                var result = await runtime.Dispatcher.SendAsync(new Notification { Title = "TransMessage 测试通知", Message = "电脑与 QQ 已连接。", Level = "success" });
-                window.Feedback(result.Ok ? "测试通知已发送。" : result.Error!);
-            }));
-            var pause = new Forms.ToolStripMenuItem("暂停通知") { CheckOnClick = true, Checked = runtime.Config.Load().Notifications.Paused };
-            pause.Click += (_, _) => runtime.Config.Update(c => c.Notifications.Paused = pause.Checked); menu.Items.Add(pause);
-            menu.Items.Add("打开日志", null, (_, _) => WindowsIntegration.Open(paths.Logs));
-            menu.Items.Add(new Forms.ToolStripSeparator());
-            menu.Items.Add("退出", null, (_, _) => application.Dispatcher.Invoke(Exit));
-            tray.ContextMenuStrip = menu; tray.DoubleClick += (_, _) => Show();
-            window.Closing += (_, e) =>
-            {
-                if (window.Exiting) return;
-                e.Cancel = true; window.Hide();
-                if (!runtime.Config.Load().Ui.TrayHintShown)
+                runtime.Log.Information("GUI started: {Version} PID {Pid}", BuildInfo.Version, Environment.ProcessId);
+                if (!File.Exists(paths.Config)) runtime.Config.Save(runtime.Config.Load());
+                var application = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
+                application.Resources.MergedDictionaries.Add(new ResourceDictionary { Source = new Uri("/TransMessage;component/Theme.xaml", UriKind.Relative) });
+                var window = new MainWindow(runtime);
+                application.MainWindow = window;
+                using var tray = new Forms.NotifyIcon
                 {
-                    tray.ShowBalloonTip(5000, "TransMessage 仍在后台运行", "右下角托盘图标可重新打开；右键选择“退出”可停止通知。", Forms.ToolTipIcon.Info);
-                    runtime.Config.Update(c => c.Ui.TrayHintShown = true);
-                }
-            };
-            runtime.ShowRequested += Show;
-            runtime.StopRequested += () => application.Dispatcher.BeginInvoke(Exit);
-            application.SessionEnding += (_, _) => { window.Exiting = true; stop.Cancel(); };
-            application.DispatcherUnhandledException += (_, e) => { window.Feedback(AppException.Describe(e.Exception)); e.Handled = true; };
-            application.Startup += async (_, _) =>
-            {
-                if (!background) window.Show();
-                await window.ExecuteAsync(() => runtime.StartServicesAsync(stop.Token));
-            };
-            var pipeTask = Task.Run(() => runtime.RunPipeAsync(stop.Token));
-            application.Run();
-            window.Exiting = true; tray.Visible = false; stop.Cancel();
-            Task.Run(async () => { await pipeTask; await runtime.DisposeAsync(); }).GetAwaiter().GetResult();
-            return 0;
+                    Text = "TransMessage · 任务完成通知",
+                    Visible = true,
+                    Icon = System.Drawing.Icon.ExtractAssociatedIcon(WindowsIntegration.Executable) ?? System.Drawing.SystemIcons.Information
+                };
+                var menu = new Forms.ContextMenuStrip();
+                void Show() => application.Dispatcher.Invoke(() => { window.Show(); if (window.WindowState == WindowState.Minimized) window.WindowState = WindowState.Normal; window.Activate(); });
+                void Exit(string reason) { runtime.Log.Information("GUI exit requested: {Reason}", reason); window.Exiting = true; application.Shutdown(); }
+                menu.Items.Add("打开 TransMessage", null, (_, _) => Show());
+                menu.Items.Add("发送测试通知", null, async (_, _) => await window.ExecuteAsync(async () =>
+                {
+                    var result = await runtime.Dispatcher.SendAsync(new Notification { Title = "TransMessage 测试通知", Message = "电脑与 QQ 已连接。", Level = "success" });
+                    window.Feedback(result.Ok ? "测试通知已发送。" : result.Error!);
+                }));
+                var pause = new Forms.ToolStripMenuItem("暂停通知") { CheckOnClick = true, Checked = runtime.Config.Load().Notifications.Paused };
+                pause.Click += (_, _) => runtime.Config.Update(c => c.Notifications.Paused = pause.Checked); menu.Items.Add(pause);
+                menu.Items.Add("打开日志", null, (_, _) => WindowsIntegration.Open(paths.Logs));
+                menu.Items.Add(new Forms.ToolStripSeparator());
+                menu.Items.Add("退出", null, (_, _) => application.Dispatcher.Invoke(() => Exit("tray")));
+                tray.ContextMenuStrip = menu; tray.DoubleClick += (_, _) => Show();
+                window.Closing += (_, e) =>
+                {
+                    if (window.Exiting) return;
+                    e.Cancel = true; window.Hide();
+                    if (!runtime.Config.Load().Ui.TrayHintShown)
+                    {
+                        tray.ShowBalloonTip(5000, "TransMessage 仍在后台运行", "右下角托盘图标可重新打开；右键选择“退出”可停止通知。", Forms.ToolTipIcon.Info);
+                        runtime.Config.Update(c => c.Ui.TrayHintShown = true);
+                    }
+                };
+                runtime.ShowRequested += Show;
+                runtime.StopRequested += () => application.Dispatcher.BeginInvoke(() => Exit("local request"));
+                application.SessionEnding += (_, _) => { runtime.Log.Information("GUI session ending"); window.Exiting = true; stop.Cancel(); };
+                application.DispatcherUnhandledException += (_, e) => { LogFailure("dispatcher", e.Exception); window.Feedback(AppException.Describe(e.Exception)); e.Handled = true; };
+                application.Startup += async (_, _) =>
+                {
+                    if (!background) window.Show();
+                    await window.ExecuteAsync(() => runtime.StartServicesAsync(stop.Token));
+                };
+                var pipeTask = Task.Run(() => runtime.RunPipeAsync(stop.Token));
+                application.Run();
+                runtime.Log.Information("GUI stopped");
+                window.Exiting = true; tray.Visible = false; stop.Cancel();
+                Task.Run(async () => { await pipeTask; await runtime.DisposeAsync(); }).GetAwaiter().GetResult();
+                return 0;
+            }
+            catch (Exception e) { LogFailure("lifecycle", e); throw; }
+            finally { AppDomain.CurrentDomain.UnhandledException -= fatal; }
         }
         finally { mutex.ReleaseMutex(); }
     }

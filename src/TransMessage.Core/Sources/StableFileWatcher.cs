@@ -46,10 +46,17 @@ public sealed class StableFileWatcher(ConfigStore config, Func<Notification, Can
                 { _dirty[e.FullPath] = 0; _signal.Writer.TryWrite(true); }
             }
             watcher.Created += Change; watcher.Changed += Change; watcher.Deleted += Change; watcher.Renamed += (_, e) => { Change(null, e); _dirty[e.OldFullPath] = 0; };
-            watcher.Error += (_, _) =>
+            watcher.Error += (_, e) =>
             {
-                logger.Warning("File watcher overflow; reconciling metadata");
-                foreach (var path in Directory.EnumerateFiles(root)) _dirty[path] = 0;
+                logger.Warning("File watcher failed: {Kind}", e.GetException().GetType().Name);
+                if (e.GetException() is not InternalBufferOverflowException)
+                { Status = "部分目录监听已停止；恢复目录后重新应用文件监控设置。"; return; }
+                try { foreach (var path in Directory.EnumerateFiles(root)) _dirty[path] = 0; }
+                catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+                {
+                    Status = "目录扫描失败；确认目录可访问后重新应用文件监控设置。";
+                    logger.Warning("File rescan failed: {Kind}", error.GetType().Name);
+                }
                 _signal.Writer.TryWrite(true);
             };
             watcher.EnableRaisingEvents = true; _watchers.Add(watcher);
