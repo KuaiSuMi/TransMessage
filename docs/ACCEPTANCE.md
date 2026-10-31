@@ -6,6 +6,8 @@
 - 修复错误类型区分：仅缓冲溢出触发补扫；目录失效显示监听已停止。补扫捕获目录不可访问异常，避免从系统回调传播到整个进程。
 - 新增两项真实子进程回归：删除监控目录后进程存活、状态可查、窗口可打开，恢复目录并重新应用设置后恢复监听，最后正常退出。启动、退出请求、异常类型及调用栈记录到日志；不记录异常消息中的外部内容。
 - `scripts/verify.ps1` 通过 269 项测试、锁定还原、格式检查、零警告构建、34 张 WPF 渲染及依赖审计。证据：`artifacts/crash-v035/verify.log`、`artifacts/test-results/verified.trx`。
+- 最终 ZIP 解压后的 6 项程序检查通过，包含两项闪退回归；[v0.3.5 CI](https://github.com/KuaiSuMi/TransMessage/actions/runs/41221156610) 同样通过 269 项测试、渲染、审计、打包和 6 项发布程序检查。证据：`artifacts/test-results/published-v035.trx`、`artifacts/crash-v035/ci-verify.log`。
+- [v0.3.5](https://github.com/KuaiSuMi/TransMessage/releases/tag/v0.3.5) 已发布。本机实际安装于 2026-11-01 00:50:08 +08:00 经软件内更新从 0.3.4 升至 0.3.5；配置字节未变、旧版备份一致、自动重启及窗口唤起通过。现有托管会话在更新前核实为空闲。证据：`artifacts/update-actual-v035.json`。
 
 原事故缺少调用栈，目前确认修复的是已复现的目录监听闪退；长时间挂机的实际表现仍待观察。
 
